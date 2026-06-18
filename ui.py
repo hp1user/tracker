@@ -2005,26 +2005,107 @@ class TrackerDashboard(ctk.CTk):
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         )
         
+        def parse_version(v):
+            """Parse 'v1.0.1' into comparable tuple (1, 0, 1)."""
+            try:
+                return tuple(int(x) for x in v.lstrip("v").split("."))
+            except Exception:
+                return (0,)
+        
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
                 latest_version = data.get("tag_name")
                 release_url = data.get("html_url")
+                assets = data.get("assets", [])
                 
-                if latest_version and latest_version != current_version:
+                if latest_version and parse_version(latest_version) > parse_version(current_version):
                     ans = messagebox.askyesno(
                         "Update Available", 
                         f"A new version ({latest_version}) is available!\n\n"
                         f"Current version: {current_version}\n\n"
-                        "Would you like to open the download page?"
+                        "Download and install the update now?"
                     )
                     if ans:
-                        webbrowser.open(release_url)
+                        # Find the .exe asset download URL
+                        download_url = None
+                        for asset in assets:
+                            if asset.get("name", "").lower().endswith(".exe"):
+                                download_url = asset.get("browser_download_url")
+                                break
+                        
+                        if download_url and getattr(sys, 'frozen', False):
+                            # Running as compiled EXE - do auto-update
+                            import threading
+                            threading.Thread(
+                                target=self._download_and_apply_update,
+                                args=(download_url, latest_version),
+                                daemon=True
+                            ).start()
+                        else:
+                            # Running as script or no asset found - open browser
+                            webbrowser.open(release_url)
                 elif not quiet:
                     messagebox.showinfo("Up to Date", f"You are running the latest version ({current_version}).")
         except Exception as e:
             if not quiet:
                 messagebox.showerror("Update Error", f"Failed to check for updates:\n{e}")
+
+    def _download_and_apply_update(self, download_url, new_version):
+        """Download the new EXE and swap it in via a batch script after exit."""
+        import urllib.request
+        import tempfile
+        import subprocess
+        import tkinter.messagebox as messagebox
+
+        try:
+            # Show downloading status on main thread
+            self.after(0, lambda: messagebox.showinfo(
+                "Downloading Update",
+                f"Downloading {new_version}...\n\nThe app will restart automatically when done."
+            ))
+
+            # Download new EXE to a temp file
+            temp_dir = tempfile.gettempdir()
+            new_exe_path = os.path.join(temp_dir, "TimeTracker_new.exe")
+            current_exe_path = sys.executable
+
+            with urllib.request.urlopen(download_url, timeout=60) as resp:
+                with open(new_exe_path, "wb") as f:
+                    f.write(resp.read())
+
+            # Write a batch script that:
+            # 1. Waits for this process to exit
+            # 2. Copies new EXE over old EXE
+            # 3. Restarts the app
+            # 4. Deletes itself
+            bat_path = os.path.join(temp_dir, "timetracker_updater.bat")
+            bat_content = (
+                "@echo off\n"
+                "timeout /t 2 /nobreak > NUL\n"
+                f"copy /y \"{new_exe_path}\" \"{current_exe_path}\"\n"
+                f"start \"\" \"{current_exe_path}\"\n"
+                f"del \"{new_exe_path}\"\n"
+                "del \"%~f0\"\n"
+            )
+            with open(bat_path, "w") as f:
+                f.write(bat_content)
+
+            # Launch the updater script in background and quit
+            subprocess.Popen(
+                ["cmd", "/c", bat_path],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                close_fds=True
+            )
+
+            # Quit app so the batch can replace the EXE
+            self.after(0, lambda: os._exit(0))
+
+        except Exception as e:
+            err = str(e)
+            self.after(0, lambda: messagebox.showerror(
+                "Update Failed", f"Could not download update:\n{err}\n\nPlease download manually from GitHub."
+            ))
 
     def _quick_add_app(self):
         """Read the combobox selection, normalize the app name, save to DB, update tracker, and refresh UI."""
