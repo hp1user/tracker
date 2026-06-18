@@ -519,7 +519,7 @@ class TrackerDashboard(ctk.CTk):
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
-            text="Local Time Tracker v1.8", 
+            text="Local Time Tracker v0.1", 
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color="#64748b"
         )
