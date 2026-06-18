@@ -1468,6 +1468,7 @@ class TrackerDashboard(ctk.CTk):
         # Run first refresh and schedule updates
         self.refresh_data()
         self.schedule_refresh()
+        self.after(3000, lambda: self.run_update_check(quiet=True))
 
     def _setup_sidebar(self):
         """Create left side panel with stats cards."""
@@ -1750,6 +1751,42 @@ class TrackerDashboard(ctk.CTk):
             text_color=THEME['text_primary']
         )
         browse_btn.pack(side="right", padx=15, pady=15)
+        
+        # Check for Updates Settings Card
+        update_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
+        update_card.pack(fill="x", padx=10, pady=5)
+        
+        update_info_frame = ctk.CTkFrame(update_card, fg_color="transparent")
+        update_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
+        
+        update_label = ctk.CTkLabel(
+            update_info_frame,
+            text="Application Version & Updates",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            anchor="w"
+        )
+        update_label.pack(fill="x")
+        
+        update_desc = ctk.CTkLabel(
+            update_info_frame,
+            text="Current version: v1.0.0. Check for new updates on GitHub.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=THEME['text_secondary'],
+            anchor="w"
+        )
+        update_desc.pack(fill="x")
+        
+        check_update_btn = ctk.CTkButton(
+            update_card,
+            text="Check for Updates",
+            command=lambda: self.run_update_check(quiet=False),
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=140,
+            fg_color=THEME['btn_bg'],
+            hover_color=THEME['btn_hover'],
+            text_color=THEME['text_primary']
+        )
+        check_update_btn.pack(side="right", padx=15, pady=15)
         
         # Danger Zone / Clear Data Card
         reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
@@ -2576,6 +2613,46 @@ class TrackerDashboard(ctk.CTk):
     def hide_window(self):
         """Hide the window instead of destroying/quitting."""
         self.withdraw()
+
+    def run_update_check(self, quiet=True):
+        """Start the update check in a background thread to prevent UI freezing."""
+        import threading
+        threading.Thread(target=self.check_for_updates, args=(quiet,), daemon=True).start()
+
+    def check_for_updates(self, quiet=True):
+        """Query GitHub Releases API to see if a newer version tag exists."""
+        import urllib.request
+        import json
+        import webbrowser
+        import tkinter.messagebox as messagebox
+        
+        current_version = "v1.0.0"
+        url = "https://api.github.com/repos/hp1user/tracker/releases/latest"
+        req = urllib.request.Request(
+            url, 
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                latest_version = data.get("tag_name")
+                release_url = data.get("html_url")
+                
+                if latest_version and latest_version != current_version:
+                    ans = messagebox.askyesno(
+                        "Update Available", 
+                        f"A new version ({latest_version}) is available!\n\n"
+                        f"Current version: {current_version}\n\n"
+                        "Would you like to open the download page?"
+                    )
+                    if ans:
+                        webbrowser.open(release_url)
+                elif not quiet:
+                    messagebox.showinfo("Up to Date", f"You are running the latest version ({current_version}).")
+        except Exception as e:
+            if not quiet:
+                messagebox.showerror("Update Error", f"Failed to check for updates:\n{e}")
 
     def _quick_add_app(self):
         """Read the combobox selection, normalize the app name, save to DB, update tracker, and refresh UI."""
