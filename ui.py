@@ -16,13 +16,31 @@ import psutil
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# Category Colors & Emoticons for UI headers
+# Modern Premium Theme Color Palette (Zinc & Violet Theme)
+THEME = {
+    'bg_main': '#121214',        # Dark neutral grey (Zinc-950)
+    'bg_sidebar': '#18181b',     # Slightly lighter dark grey (Zinc-900)
+    'bg_card': '#1c1c1e',        # Card/Panel background (Zinc-850)
+    'border_subtle': '#27272a',  # Zinc-800 borders
+    'accent': '#8b5cf6',         # Violet accent (Tailwind Violet-500)
+    'accent_hover': '#7c3aed',   # Violet hover (Tailwind Violet-600)
+    'text_primary': '#f4f4f5',   # Zinc-100 high-contrast text
+    'text_secondary': '#a1a1aa', # Zinc-400 muted text
+    'text_muted': '#71717a',     # Zinc-500 dark muted text
+    
+    # Dropdown / OptionMenu / Button colors
+    'btn_bg': '#27272a',
+    'btn_hover': '#3f3f46',
+    'btn_border': '#3f3f46'
+}
+
+# Category Colors & Emoticons for UI headers (Modern flat shades)
 CATEGORY_COLORS = {
     'Productivity': '#10b981',    # Emerald Green
-    'Entertainment': '#3b82f6',   # Blue
-    'Distraction': '#ef4444',     # Coral Red
-    'Untracked': '#475569',       # Slate/Dark Grey
-    'Uncategorized': '#64748b'    # Slate Grey
+    'Entertainment': '#3b82f6',   # Sky Blue
+    'Distraction': '#f43f5e',     # Rose/Red
+    'Untracked': '#52525b',       # Muted Zinc-600
+    'Uncategorized': '#71717a'    # Zinc-500
 }
 
 CATEGORY_ICONS = {
@@ -82,7 +100,8 @@ def get_open_window_exes():
 
 class AppRow(tk.Frame):
     """Custom compact row displaying application usage. Inherits from tk.Frame for maximum resize performance."""
-    def __init__(self, master, exe_name, duration, total_duration, max_duration, category, bg_color="#1e293b"):
+    def __init__(self, master, exe_name, duration, total_duration, max_duration, category, bg_color=None):
+        bg_color = bg_color or THEME['bg_card']
         super().__init__(master, bg=bg_color)
         
         # Calculate percentage relative to total day/period screen time
@@ -90,7 +109,7 @@ class AppRow(tk.Frame):
         # Progress bar fill relative to the highest overall app for visual balance
         bar_value = duration / max_duration if max_duration > 0 else 0
         
-        bar_color = CATEGORY_COLORS.get(category, '#64748b')
+        bar_color = CATEGORY_COLORS.get(category, '#71717a')
         
         # Name label - takes remaining space, allows resizing
         self.name_label = ctk.CTkLabel(
@@ -98,7 +117,8 @@ class AppRow(tk.Frame):
             text=exe_name, 
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             anchor="w",
-            fg_color=bg_color
+            fg_color=bg_color,
+            text_color=THEME['text_primary']
         )
         self.name_label.pack(side="left", padx=(5, 5), fill="x", expand=True)
         
@@ -108,7 +128,7 @@ class AppRow(tk.Frame):
             orientation="horizontal", 
             width=110, # Fixed width prevents dynamic redraw events
             height=8, 
-            fg_color="#020617", # Dark background for contrast
+            fg_color=THEME['bg_main'], # Dark background for contrast
             progress_color=bar_color
         )
         self.progress_bar.set(bar_value)
@@ -122,14 +142,15 @@ class AppRow(tk.Frame):
             font=ctk.CTkFont(family="Segoe UI", size=10),
             anchor="e",
             width=70,
-            fg_color=bg_color
+            fg_color=bg_color,
+            text_color=THEME['text_secondary']
         )
         self.info_label.pack(side="right", padx=(5, 5))
 
 class CategorySettingsRow(tk.Frame):
     """Compact card in Settings for mapping an executable name to a category. Uses tk.Frame for speed."""
     def __init__(self, master, exe_name, current_category, on_change_callback):
-        super().__init__(master, bg="#1e293b")
+        super().__init__(master, bg=THEME['bg_card'])
         
         self.exe_name = exe_name
         self.on_change_callback = on_change_callback
@@ -140,7 +161,8 @@ class CategorySettingsRow(tk.Frame):
             text=exe_name, 
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             anchor="w",
-            fg_color="#1e293b"
+            fg_color=THEME['bg_card'],
+            text_color=THEME['text_primary']
         )
         self.name_label.pack(side="left", padx=10, fill="x", expand=True)
         
@@ -151,9 +173,13 @@ class CategorySettingsRow(tk.Frame):
             command=self._on_changed,
             font=ctk.CTkFont(family="Segoe UI", size=11),
             width=120,
-            fg_color="#334155",
-            button_color="#475569",
-            button_hover_color="#64748b"
+            fg_color=THEME['btn_bg'],
+            button_color=THEME['btn_hover'],
+            button_hover_color=THEME['text_muted'],
+            text_color=THEME['text_primary'],
+            dropdown_fg_color=THEME['bg_sidebar'],
+            dropdown_text_color=THEME['text_primary'],
+            dropdown_hover_color=THEME['btn_hover']
         )
         self.cat_menu.set(current_category)
         self.cat_menu.pack(side="right", padx=10, pady=8)
@@ -170,7 +196,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
         self.title("Weekly Screen Time Breakdown")
         self.geometry("520x420")
         self.minsize(450, 350)
-        self.configure(fg_color="#020617")
+        self.configure(fg_color=THEME['bg_main'])
         self.after(10, self.lift) # Make sure it focuses on Windows
         
         # Header
@@ -178,7 +204,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
             self,
             text="📅 Weekly Screen Time History",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-            text_color="#10b981",
+            text_color=THEME['accent'],
             anchor="w"
         )
         header_lbl.pack(fill="x", padx=20, pady=(20, 5))
@@ -187,7 +213,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
             self,
             text="Total active time logged for each of the last 7 days.",
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         desc_lbl.pack(fill="x", padx=20, pady=(0, 15))
@@ -206,7 +232,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                 scroll,
                 text=f"Total Screen Time (Past 7 Days): {format_duration(total_duration)}",
                 font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-                text_color="#f8fafc",
+                text_color=THEME['text_primary'],
                 anchor="w"
             )
             summary_lbl.pack(fill="x", padx=10, pady=(0, 10))
@@ -219,7 +245,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                 formatted_date = dt.strftime("%A, %b %d")
                 
                 # Row Container using standard Frame
-                row = tk.Frame(scroll, bg="#1e293b")
+                row = tk.Frame(scroll, bg=THEME['bg_card'])
                 row.pack(fill="x", pady=4, padx=5)
                 
                 # Date label
@@ -229,7 +255,8 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                     font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
                     anchor="w",
                     width=150,
-                    fg_color="#1e293b"
+                    fg_color=THEME['bg_card'],
+                    text_color=THEME['text_primary']
                 )
                 lbl.pack(side="left", padx=10, pady=8)
                 
@@ -239,8 +266,8 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                     row,
                     orientation="horizontal",
                     height=8,
-                    fg_color="#020617",
-                    progress_color="#10b981"
+                    fg_color=THEME['bg_main'],
+                    progress_color=THEME['accent']
                 )
                 bar.set(bar_value)
                 bar.pack(side="left", fill="x", expand=True, padx=10)
@@ -252,7 +279,8 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                     font=ctk.CTkFont(family="Segoe UI", size=12),
                     anchor="e",
                     width=80,
-                    fg_color="#1e293b"
+                    fg_color=THEME['bg_card'],
+                    text_color=THEME['text_primary']
                 )
                 val.pack(side="right", padx=10)
         else:
@@ -260,7 +288,7 @@ class WeeklyCalendarWindow(ctk.CTkToplevel):
                 scroll,
                 text="No active tracking records found for the past 7 days.",
                 font=ctk.CTkFont(family="Segoe UI", size=13),
-                text_color="#64748b"
+                text_color=THEME['text_muted']
             )
             no_data.pack(pady=40)
 
@@ -278,11 +306,11 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
         self.title("Monthly Screen Time Calendar")
         self.geometry("680x560")
         self.minsize(600, 480)
-        self.configure(fg_color="#020617")
+        self.configure(fg_color=THEME['bg_main'])
         self.after(10, self.lift)
         
         # Header Controls Frame
-        self.header_frame = tk.Frame(self, bg="#020617")
+        self.header_frame = tk.Frame(self, bg=THEME['bg_main'])
         self.header_frame.pack(fill="x", padx=20, pady=(20, 5))
         
         # Month Navigation Title
@@ -290,7 +318,7 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
             self.header_frame,
             text="",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-            text_color="#3b82f6",
+            text_color=THEME['accent'],
             anchor="w"
         )
         self.month_title_label.pack(side="left", fill="x", expand=True)
@@ -303,8 +331,9 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
             width=32,
             height=32,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#1e293b",
-            hover_color="#334155"
+            fg_color=THEME['btn_bg'],
+            hover_color=THEME['btn_hover'],
+            text_color=THEME['text_primary']
         )
         btn_next.pack(side="right", padx=3)
         
@@ -316,22 +345,23 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
             width=32,
             height=32,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#1e293b",
-            hover_color="#334155"
+            fg_color=THEME['btn_bg'],
+            hover_color=THEME['btn_hover'],
+            text_color=THEME['text_primary']
         )
         btn_prev.pack(side="right", padx=3)
         
         desc_lbl = ctk.CTkLabel(
             self,
-            text="Color highlights represent daily active time (Dark Blue for light, Bright Blue for heavy usage).",
+            text="Color highlights represent daily active time (Dark Purple for light, Bright Violet for heavy usage).",
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         desc_lbl.pack(fill="x", padx=20, pady=(0, 15))
         
         # Main Calendar Grid Container Frame
-        self.grid_container = tk.Frame(self, bg="#020617")
+        self.grid_container = tk.Frame(self, bg=THEME['bg_main'])
         self.grid_container.pack(fill="both", expand=True, padx=15, pady=5)
         
         self.draw_calendar()
@@ -367,7 +397,7 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
                 self.grid_container, 
                 text=day_name, 
                 font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), 
-                text_color="#94a3b8"
+                text_color=THEME['text_secondary']
             )
             lbl.grid(row=0, column=col, padx=4, pady=6, sticky="ew")
             
@@ -380,7 +410,7 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
         for r_idx, week in enumerate(cal_matrix):
             for c_idx, day in enumerate(week):
                 if day == 0:
-                    cell = tk.Frame(self.grid_container, bg="#020617")
+                    cell = tk.Frame(self.grid_container, bg=THEME['bg_main'])
                     cell.grid(row=r_idx+1, column=c_idx, padx=4, pady=4, sticky="nsew")
                     continue
                     
@@ -388,19 +418,19 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
                 duration = totals.get(date_str, 0)
                 
                 if duration == 0:
-                    bg_color = "#1e293b"
-                    text_color = "#64748b"
+                    bg_color = THEME['bg_card']
+                    text_color = THEME['text_muted']
                 elif duration < 7200:
-                    bg_color = "#1e3a8a"
-                    text_color = "#93c5fd"
+                    bg_color = "#2e1065"   # Very dark purple (Zinc Violet-950/900 shade)
+                    text_color = "#ddd6fe"  # Violet-200
                 elif duration < 18000:
-                    bg_color = "#3b82f6"
-                    text_color = "#eff6ff"
+                    bg_color = "#6d28d9"   # Medium dark purple (Violet-700)
+                    text_color = "#f5f3ff"  # Violet-50
                 else:
-                    bg_color = "#2563eb"
-                    text_color = "#f8fafc"
+                    bg_color = "#8b5cf6"   # Bright violet (Violet-500)
+                    text_color = "#ffffff"  # Pure white
                     
-                cell = tk.Frame(self.grid_container, bg=bg_color, borderwidth=1, relief="ridge")
+                cell = tk.Frame(self.grid_container, bg=bg_color, borderwidth=1, relief="flat", highlightbackground=THEME['border_subtle'], highlightthickness=1)
                 cell.grid(row=r_idx+1, column=c_idx, padx=4, pady=4, sticky="nsew")
                 
                 day_lbl = ctk.CTkLabel(
@@ -426,7 +456,7 @@ class DonutChart(tk.Canvas):
     """A native Tkinter Canvas widget that draws a premium, beautiful donut chart for categories."""
     def __init__(self, master, data, colors, **kwargs):
         # Default canvas settings to match the dark aesthetic
-        kwargs.setdefault('bg', '#1e293b')
+        kwargs.setdefault('bg', THEME['bg_card'])
         kwargs.setdefault('highlightthickness', 0)
         super().__init__(master, **kwargs)
         self.data = data # Dictionary: {category: seconds}
@@ -453,9 +483,9 @@ class DonutChart(tk.Canvas):
         
         if total == 0:
             # Draw an empty slate grey ring if no data is tracked
-            self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill="#334155", outline="")
-            self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill="#1e293b", outline="")
-            self.create_text(cx, cy, text="No Tracking\nData", font=("Segoe UI", 12, "bold"), fill="#94a3b8", justify="center")
+            self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=THEME['border_subtle'], outline="")
+            self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill=THEME['bg_card'], outline="")
+            self.create_text(cx, cy, text="No Tracking\nData", font=("Segoe UI", 12, "bold"), fill=THEME['text_secondary'], justify="center")
             return
             
         start_angle = 90
@@ -464,24 +494,25 @@ class DonutChart(tk.Canvas):
             if value <= 0:
                 continue
             extent = (value / total) * 360
-            color = self.colors.get(cat, '#64748b')
+            color = self.colors.get(cat, THEME['text_muted'])
             # create_arc draws slice
             self.create_arc(cx - radius, cy - radius, cx + radius, cy + radius,
                              start=start_angle, extent=extent, fill=color, outline="", style="pieslice")
             start_angle += extent
             
         # Draw center circle to hollow out the pie chart into a donut
-        self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill="#1e293b", outline="")
+        self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill=THEME['bg_card'], outline="")
         
         # Draw center text (Total screen time)
         total_str = format_duration(total)
-        self.create_text(cx, cy - 8, text="TOTAL TIME", font=("Segoe UI", 8, "bold"), fill="#94a3b8")
-        self.create_text(cx, cy + 10, text=total_str, font=("Segoe UI", 14, "bold"), fill="#f8fafc")
+        self.create_text(cx, cy - 8, text="TOTAL TIME", font=("Segoe UI", 8, "bold"), fill=THEME['text_secondary'])
+        self.create_text(cx, cy + 10, text=total_str, font=("Segoe UI", 14, "bold"), fill=THEME['text_primary'])
 
 class BarChart(tk.Canvas):
     """A native Tkinter Canvas widget that draws a clean weekly bar chart."""
-    def __init__(self, master, data, bar_color="#3b82f6", **kwargs):
-        kwargs.setdefault('bg', '#1e293b')
+    def __init__(self, master, data, bar_color=None, **kwargs):
+        bar_color = bar_color or THEME['accent']
+        kwargs.setdefault('bg', THEME['bg_card'])
         kwargs.setdefault('highlightthickness', 0)
         super().__init__(master, **kwargs)
         self.data = data # List of dicts: [{'date': 'YYYY-MM-DD', 'duration': seconds}]
@@ -507,7 +538,7 @@ class BarChart(tk.Canvas):
         plot_h = h - padding_top - padding_bottom
         
         if not self.data:
-            self.create_text(w / 2, h / 2, text="No weekly data available yet.", font=("Segoe UI", 12, "bold"), fill="#64748b")
+            self.create_text(w / 2, h / 2, text="No weekly data available yet.", font=("Segoe UI", 12, "bold"), fill=THEME['text_muted'])
             return
             
         max_duration = max(day['duration'] for day in self.data)
@@ -546,13 +577,13 @@ class BarChart(tk.Canvas):
             
             # Top duration label
             dur_str = format_duration(dur)
-            self.create_text((bx1 + bx2) / 2, by1 - 12, text=dur_str, font=("Segoe UI", 9, "bold"), fill="#f8fafc")
+            self.create_text((bx1 + bx2) / 2, by1 - 12, text=dur_str, font=("Segoe UI", 9, "bold"), fill=THEME['text_primary'])
             
             # Bottom day label
-            self.create_text((bx1 + bx2) / 2, h - 15, text=day_label, font=("Segoe UI", 10, "bold"), fill="#94a3b8")
+            self.create_text((bx1 + bx2) / 2, h - 15, text=day_label, font=("Segoe UI", 10, "bold"), fill=THEME['text_secondary'])
             
         # Draw bottom baseline
-        self.create_line(padding_left, h - padding_bottom, w - padding_right, h - padding_bottom, fill="#334155", width=2)
+        self.create_line(padding_left, h - padding_bottom, w - padding_right, h - padding_bottom, fill=THEME['border_subtle'], width=2)
 
 class TrackerDashboard(ctk.CTk):
     def __init__(self, db_path, tracker=None, on_notify=None):
@@ -569,6 +600,7 @@ class TrackerDashboard(ctk.CTk):
         self.title("Windows Time Tracker")
         self.geometry("950x650")
         self.minsize(850, 550)
+        self.configure(fg_color=THEME['bg_main'])
         
         # Intercept closing
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
@@ -587,7 +619,7 @@ class TrackerDashboard(ctk.CTk):
 
     def _setup_sidebar(self):
         """Create left side panel with stats cards."""
-        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f172a")
+        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=THEME['bg_sidebar'])
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_propagate(False) # Prevent grid geometry resizing from collapsing the sidebar
         self.sidebar_frame.grid_rowconfigure(4, weight=1) # Spacer row
@@ -597,19 +629,19 @@ class TrackerDashboard(ctk.CTk):
             self.sidebar_frame, 
             text="⏱️ Tracker", 
             font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 20), sticky="w")
         
         # Card 1: Today's Time
-        self.today_card = ctk.CTkFrame(self.sidebar_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
+        self.today_card = ctk.CTkFrame(self.sidebar_frame, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color=THEME['border_subtle'])
         self.today_card.grid(row=1, column=0, padx=15, pady=10, sticky="ew")
         
         self.today_card_title = ctk.CTkLabel(
             self.today_card, 
             text="SCREEN TIME TODAY", 
             font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            text_color="#94a3b8"
+            text_color=THEME['text_secondary']
         )
         self.today_card_title.pack(padx=15, pady=(10, 2))
         
@@ -617,19 +649,19 @@ class TrackerDashboard(ctk.CTk):
             self.today_card, 
             text="0h 0m", 
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         self.today_time_label.pack(padx=15, pady=(2, 10))
         
         # Card 2: Daily Average
-        self.avg_card = ctk.CTkFrame(self.sidebar_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
+        self.avg_card = ctk.CTkFrame(self.sidebar_frame, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color=THEME['border_subtle'])
         self.avg_card.grid(row=2, column=0, padx=15, pady=10, sticky="ew")
         
         self.avg_card_title = ctk.CTkLabel(
             self.avg_card, 
             text="DAILY AVERAGE", 
             font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            text_color="#94a3b8"
+            text_color=THEME['text_secondary']
         )
         self.avg_card_title.pack(padx=15, pady=(10, 2))
         
@@ -637,7 +669,7 @@ class TrackerDashboard(ctk.CTk):
             self.avg_card, 
             text="0h 0m", 
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         self.avg_time_label.pack(padx=15, pady=(2, 10))
  
@@ -646,8 +678,8 @@ class TrackerDashboard(ctk.CTk):
             self.sidebar_frame,
             text="Sync & Refresh",
             command=self.refresh_data,
-            fg_color="#3b82f6",
-            hover_color="#2563eb",
+            fg_color=THEME['accent'],
+            hover_color=THEME['accent_hover'],
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             height=32
         )
@@ -658,13 +690,13 @@ class TrackerDashboard(ctk.CTk):
             self.sidebar_frame, 
             text="Local Time Tracker v0.1", 
             font=ctk.CTkFont(family="Segoe UI", size=10),
-            text_color="#64748b"
+            text_color=THEME['text_muted']
         )
         self.footer_label.grid(row=5, column=0, padx=20, pady=20, sticky="s")
-
+ 
     def _setup_main_panel(self):
         """Create right side panel with tabs and data lists. Uses tk.Frame for maximum resize performance."""
-        self.main_frame = tk.Frame(self, bg="#020617")
+        self.main_frame = tk.Frame(self, bg=THEME['bg_main'])
         self.main_frame.grid(row=0, column=1, sticky="nsew", padx=2, pady=2)
         
         self.main_frame.grid_columnconfigure(0, weight=1)
@@ -676,9 +708,11 @@ class TrackerDashboard(ctk.CTk):
             values=["App Breakdown", "Analytics", "Browser Highlights", "History & Reports", "Settings"],
             command=self._switch_view,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            selected_color="#3b82f6",
-            unselected_color="#1e293b",
-            selected_hover_color="#2563eb"
+            selected_color=THEME['accent'],
+            unselected_color=THEME['bg_card'],
+            selected_hover_color=THEME['accent_hover'],
+            text_color=THEME['text_primary'],
+            unselected_text_color=THEME['text_secondary']
         )
         self.view_selector.set("App Breakdown")
         self.view_selector.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
@@ -739,12 +773,12 @@ class TrackerDashboard(ctk.CTk):
             text="⚙️ Tracker Settings",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         title_settings.pack(fill="x", padx=10, pady=(15, 10))
         
         # Polling Interval Setting Card
-        interval_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        interval_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         interval_card.pack(fill="x", padx=10, pady=5)
         
         interval_label = ctk.CTkLabel(
@@ -763,15 +797,19 @@ class TrackerDashboard(ctk.CTk):
             command=self._change_poll_interval,
             font=ctk.CTkFont(family="Segoe UI", size=12),
             width=140,
-            fg_color="#334155",
-            button_color="#475569",
-            button_hover_color="#64748b"
+            fg_color=THEME['btn_bg'],
+            button_color=THEME['btn_hover'],
+            button_hover_color=THEME['text_muted'],
+            text_color=THEME['text_primary'],
+            dropdown_fg_color=THEME['bg_sidebar'],
+            dropdown_text_color=THEME['text_primary'],
+            dropdown_hover_color=THEME['btn_hover']
         )
         self.interval_menu.set(current_option)
         self.interval_menu.pack(side="right", padx=15, pady=15)
         
         # Startup Settings Card (Registry Toggle)
-        startup_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        startup_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         startup_card.pack(fill="x", padx=10, pady=5)
         
         # Check current Windows Startup registry status
@@ -792,8 +830,8 @@ class TrackerDashboard(ctk.CTk):
             text="Run at Windows Startup",
             command=self._toggle_startup,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            progress_color="#3b82f6",
-            fg_color="#334155"
+            progress_color=THEME['accent'],
+            fg_color=THEME['btn_bg']
         )
         if is_startup_enabled:
             self.startup_switch.select()
@@ -802,7 +840,7 @@ class TrackerDashboard(ctk.CTk):
         self.startup_switch.pack(side="left", padx=15, pady=15)
         
         # Database Folder Path Settings Card
-        db_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        db_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         db_card.pack(fill="x", padx=10, pady=5)
         
         db_info_frame = ctk.CTkFrame(db_card, fg_color="transparent")
@@ -820,7 +858,7 @@ class TrackerDashboard(ctk.CTk):
             db_info_frame,
             text=os.path.dirname(self.db_path),
             font=ctk.CTkFont(family="Segoe UI", size=10),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         self.db_path_label.pack(fill="x")
@@ -839,13 +877,14 @@ class TrackerDashboard(ctk.CTk):
             command=self._change_db_folder,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             width=120,
-            fg_color="#334155",
-            hover_color="#475569"
+            fg_color=THEME['btn_bg'],
+            hover_color=THEME['btn_hover'],
+            text_color=THEME['text_primary']
         )
         browse_btn.pack(side="right", padx=15, pady=15)
         
         # Danger Zone / Clear Data Card
-        reset_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#7f1d1d")
+        reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
         reset_card.pack(fill="x", padx=10, pady=5)
         
         reset_info_frame = ctk.CTkFrame(reset_card, fg_color="transparent")
@@ -855,7 +894,7 @@ class TrackerDashboard(ctk.CTk):
             reset_info_frame,
             text="Danger Zone: Clear All Tracker Data",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#ef4444",
+            text_color="#f87171",
             anchor="w"
         )
         reset_label.pack(fill="x")
@@ -864,7 +903,7 @@ class TrackerDashboard(ctk.CTk):
             reset_info_frame,
             text="Permanently delete all logged screen times, category mappings, and goals.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         reset_desc.pack(fill="x")
@@ -881,7 +920,7 @@ class TrackerDashboard(ctk.CTk):
         clear_btn.pack(side="right", padx=15, pady=15)
         
         # Section: Daily Goals Card
-        goals_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        goals_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         goals_card.pack(fill="x", padx=10, pady=5)
         
         goals_info_frame = ctk.CTkFrame(goals_card, fg_color="transparent")
@@ -899,13 +938,13 @@ class TrackerDashboard(ctk.CTk):
             goals_info_frame,
             text="Set minimum targets (Productivity) or maximum limits (Entertainment, Distraction). Set to 0h 0m to disable.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         goals_desc.pack(fill="x", pady=(0, 15))
         
         # Grid for options
-        grid_goals = tk.Frame(goals_info_frame, bg="#1e293b")
+        grid_goals = tk.Frame(goals_info_frame, bg=THEME['bg_card'])
         grid_goals.pack(fill="x", pady=5)
         
         hours_values = [str(x) for x in range(13)]
@@ -913,7 +952,7 @@ class TrackerDashboard(ctk.CTk):
         
         # Helper to render a goal row
         def create_goal_row(master, row_idx, cat_name, color, label_text):
-            lbl = ctk.CTkLabel(master, text=label_text, font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=color, anchor="w", fg_color="#1e293b")
+            lbl = ctk.CTkLabel(master, text=label_text, font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=color, anchor="w", fg_color=THEME['bg_card'])
             lbl.grid(row=row_idx, column=0, padx=10, pady=6, sticky="w")
             
             goal_sec = database.get_category_goal(self.db_path, cat_name)
@@ -928,22 +967,26 @@ class TrackerDashboard(ctk.CTk):
             
             h_menu = ctk.CTkOptionMenu(
                 master, values=hours_values, width=80, font=ctk.CTkFont(family="Segoe UI", size=11),
-                fg_color="#334155", button_color="#475569", button_hover_color="#64748b"
+                fg_color=THEME['btn_bg'], button_color=THEME['btn_hover'], button_hover_color=THEME['text_muted'],
+                text_color=THEME['text_primary'], dropdown_fg_color=THEME['bg_sidebar'], dropdown_text_color=THEME['text_primary'],
+                dropdown_hover_color=THEME['btn_hover']
             )
             h_menu.set(curr_h)
             h_menu.grid(row=row_idx, column=1, padx=5, pady=6)
             
-            lbl_h = ctk.CTkLabel(master, text="h", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color="#1e293b")
+            lbl_h = ctk.CTkLabel(master, text="h", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color=THEME['bg_card'], text_color=THEME['text_primary'])
             lbl_h.grid(row=row_idx, column=2, padx=(0, 15), pady=6)
             
             m_menu = ctk.CTkOptionMenu(
                 master, values=minutes_values, width=80, font=ctk.CTkFont(family="Segoe UI", size=11),
-                fg_color="#334155", button_color="#475569", button_hover_color="#64748b"
+                fg_color=THEME['btn_bg'], button_color=THEME['btn_hover'], button_hover_color=THEME['text_muted'],
+                text_color=THEME['text_primary'], dropdown_fg_color=THEME['bg_sidebar'], dropdown_text_color=THEME['text_primary'],
+                dropdown_hover_color=THEME['btn_hover']
             )
             m_menu.set(curr_m)
             m_menu.grid(row=row_idx, column=3, padx=5, pady=6)
             
-            lbl_m = ctk.CTkLabel(master, text="m", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color="#1e293b")
+            lbl_m = ctk.CTkLabel(master, text="m", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color=THEME['bg_card'], text_color=THEME['text_primary'])
             lbl_m.grid(row=row_idx, column=4, padx=0, pady=6)
             
             return h_menu, m_menu
@@ -953,7 +996,7 @@ class TrackerDashboard(ctk.CTk):
         self.d_h, self.d_m = create_goal_row(grid_goals, 2, "Distraction", CATEGORY_COLORS["Distraction"], "🔴 Distraction Limit:")
         
         # Save Goals Button & Status
-        btn_frame = tk.Frame(goals_info_frame, bg="#1e293b")
+        btn_frame = tk.Frame(goals_info_frame, bg=THEME['bg_card'])
         btn_frame.pack(fill="x", pady=(15, 5))
         
         save_goals_btn = ctk.CTkButton(
@@ -962,8 +1005,8 @@ class TrackerDashboard(ctk.CTk):
             command=self._save_goals,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             width=140,
-            fg_color="#3b82f6",
-            hover_color="#2563eb"
+            fg_color=THEME['accent'],
+            hover_color=THEME['accent_hover']
         )
         save_goals_btn.pack(side="left")
         
@@ -972,12 +1015,12 @@ class TrackerDashboard(ctk.CTk):
             text="",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             anchor="w",
-            fg_color="#1e293b"
+            fg_color=THEME['bg_card']
         )
         self.goals_status_lbl.pack(side="left", padx=15)
         
         # Section: Quick-Add Application Category Card
-        quick_add_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        quick_add_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         quick_add_card.pack(fill="x", padx=10, pady=5)
         
         quick_add_info_frame = ctk.CTkFrame(quick_add_card, fg_color="transparent")
@@ -995,7 +1038,7 @@ class TrackerDashboard(ctk.CTk):
             quick_add_info_frame,
             text="Select from currently open windows or type a custom executable name (e.g. notepad.exe) to assign it to a category.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         quick_add_desc.pack(fill="x", pady=(0, 10))
@@ -1010,7 +1053,15 @@ class TrackerDashboard(ctk.CTk):
             values=open_exes,
             width=250,
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            dropdown_font=ctk.CTkFont(family="Segoe UI", size=11)
+            dropdown_font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color=THEME['btn_bg'],
+            text_color=THEME['text_primary'],
+            border_color=THEME['btn_bg'],
+            button_color=THEME['btn_hover'],
+            button_hover_color=THEME['text_muted'],
+            dropdown_fg_color=THEME['bg_sidebar'],
+            dropdown_text_color=THEME['text_primary'],
+            dropdown_hover_color=THEME['btn_hover']
         )
         self.add_app_combo.set("Select or type app name...")
         self.add_app_combo.pack(side="left", padx=(0, 10))
@@ -1020,9 +1071,13 @@ class TrackerDashboard(ctk.CTk):
             values=["Productivity", "Entertainment", "Distraction", "Untracked", "Uncategorized"],
             font=ctk.CTkFont(family="Segoe UI", size=11),
             width=130,
-            fg_color="#334155",
-            button_color="#475569",
-            button_hover_color="#64748b"
+            fg_color=THEME['btn_bg'],
+            button_color=THEME['btn_hover'],
+            button_hover_color=THEME['text_muted'],
+            text_color=THEME['text_primary'],
+            dropdown_fg_color=THEME['bg_sidebar'],
+            dropdown_text_color=THEME['text_primary'],
+            dropdown_hover_color=THEME['btn_hover']
         )
         self.add_cat_menu.set("Untracked") # Default to Untracked as that's the primary use-case
         self.add_cat_menu.pack(side="left", padx=(0, 10))
@@ -1033,8 +1088,8 @@ class TrackerDashboard(ctk.CTk):
             command=self._quick_add_app,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             width=130,
-            fg_color="#3b82f6",
-            hover_color="#2563eb"
+            fg_color=THEME['accent'],
+            hover_color=THEME['accent_hover']
         )
         add_btn.pack(side="left")
         
@@ -1044,7 +1099,7 @@ class TrackerDashboard(ctk.CTk):
             text="🏷️ App Categories Settings",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         title_categories.pack(fill="x", padx=10, pady=(25, 5))
         
@@ -1052,7 +1107,7 @@ class TrackerDashboard(ctk.CTk):
             self.settings_scroll,
             text="Group and configure categories. Mark applications as 'Untracked' to exclude them entirely.",
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#94a3b8",
+            text_color=THEME['text_secondary'],
             anchor="w"
         )
         desc_label.pack(fill="x", padx=10, pady=(0, 15))
@@ -1093,7 +1148,7 @@ class TrackerDashboard(ctk.CTk):
             cat_header.pack(fill="x", padx=10, pady=(15, 5))
             
             # 2-Column Grid Container Frame (Uses tk.Frame for zero resize-redraw lag)
-            grid_frame = tk.Frame(self.settings_scroll, bg="#020617")
+            grid_frame = tk.Frame(self.settings_scroll, bg=THEME['bg_main'])
             grid_frame.pack(fill="x", padx=5, pady=5)
             grid_frame.grid_columnconfigure(0, weight=1)
             grid_frame.grid_columnconfigure(1, weight=1)
@@ -1114,7 +1169,7 @@ class TrackerDashboard(ctk.CTk):
                 self.settings_scroll,
                 text="No tracked applications found to categorize yet. Start using apps to populate this list.",
                 font=ctk.CTkFont(family="Segoe UI", size=13),
-                text_color="#64748b"
+                text_color=THEME['text_muted']
             )
             no_apps_lbl.pack(pady=30)
 
@@ -1289,23 +1344,23 @@ class TrackerDashboard(ctk.CTk):
             text="📊 Visual Analytics & Trends",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         title_analytics.pack(fill="x", padx=10, pady=(15, 10))
         
         # Horizontal Split Panel using standard frame
-        split_frame = tk.Frame(self.analytics_scroll, bg="#020617")
+        split_frame = tk.Frame(self.analytics_scroll, bg=THEME['bg_main'])
         split_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Left Panel (Donut Chart)
-        left_card = ctk.CTkFrame(split_frame, fg_color="#1e293b", corner_radius=10, border_width=1, border_color="#334155")
+        left_card = ctk.CTkFrame(split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
         left_card.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         
         lbl_donut = ctk.CTkLabel(
             left_card,
             text="Today's Category Breakdown",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         lbl_donut.pack(pady=(12, 5))
         
@@ -1317,14 +1372,14 @@ class TrackerDashboard(ctk.CTk):
         donut.pack(padx=20, pady=10, fill="both", expand=True)
         
         # Right Panel (Weekly Bar Chart)
-        right_card = ctk.CTkFrame(split_frame, fg_color="#1e293b", corner_radius=10, border_width=1, border_color="#334155")
+        right_card = ctk.CTkFrame(split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
         right_card.pack(side="right", fill="both", expand=True, padx=10, pady=10)
         
         lbl_bar = ctk.CTkLabel(
             right_card,
             text="Weekly Screen Time Trend",
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         lbl_bar.pack(pady=(12, 5))
         
@@ -1332,9 +1387,9 @@ class TrackerDashboard(ctk.CTk):
         weekly_totals = database.get_last_7_days_totals(self.db_path)
         
         # Instantiate BarChart
-        barchart = BarChart(right_card, weekly_totals, bar_color="#3b82f6", width=380, height=280)
+        barchart = BarChart(right_card, weekly_totals, bar_color=THEME['accent'], width=380, height=280)
         barchart.pack(padx=20, pady=10, fill="both", expand=True)
-
+ 
     def build_history_tab(self):
         """Construct the History and Reports layout including weekly averages and monthly top apps."""
         # Clear previous history widgets
@@ -1347,12 +1402,12 @@ class TrackerDashboard(ctk.CTk):
             text="📈 History & Reports",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         title_history.pack(fill="x", padx=10, pady=(15, 10))
         
         # Grid frame for stats cards (Uses tk.Frame for fast resizing)
-        stats_grid_frame = tk.Frame(self.history_scroll, bg="#020617")
+        stats_grid_frame = tk.Frame(self.history_scroll, bg=THEME['bg_main'])
         stats_grid_frame.pack(fill="x", padx=5, pady=5)
         stats_grid_frame.grid_columnconfigure(0, weight=1)
         stats_grid_frame.grid_columnconfigure(1, weight=1)
@@ -1367,7 +1422,7 @@ class TrackerDashboard(ctk.CTk):
             widget.bind("<Button-1>", lambda e: callback())
         
         # Card 1: Past 7 Days Average
-        card1 = ctk.CTkFrame(stats_grid_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
+        card1 = ctk.CTkFrame(stats_grid_frame, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color=THEME['border_subtle'])
         card1.grid(row=0, column=0, padx=10, pady=5, sticky="nsew")
         
         lbl1 = ctk.CTkLabel(
@@ -1382,7 +1437,7 @@ class TrackerDashboard(ctk.CTk):
             card1, 
             text=format_duration(weekly_avg), 
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"), 
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         val1.pack(padx=15, pady=(2, 12))
         
@@ -1392,14 +1447,14 @@ class TrackerDashboard(ctk.CTk):
         bind_card(val1, self.open_weekly_popup)
         
         # Card 2: This Month's Total Screen Time
-        card2 = ctk.CTkFrame(stats_grid_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
+        card2 = ctk.CTkFrame(stats_grid_frame, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color=THEME['border_subtle'])
         card2.grid(row=0, column=1, padx=10, pady=5, sticky="nsew")
         
         lbl2 = ctk.CTkLabel(
             card2, 
             text="THIS MONTH'S TOTAL TIME (CLICK TO VIEW)", 
             font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"), 
-            text_color="#3b82f6"
+            text_color=THEME['accent']
         )
         lbl2.pack(padx=15, pady=(12, 2))
         
@@ -1407,7 +1462,7 @@ class TrackerDashboard(ctk.CTk):
             card2, 
             text=format_duration(monthly_total), 
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"), 
-            text_color="#f8fafc"
+            text_color=THEME['text_primary']
         )
         val2.pack(padx=15, pady=(2, 12))
         
@@ -1482,7 +1537,7 @@ class TrackerDashboard(ctk.CTk):
                 self.rendered_grid_container.destroy()
                 self.rendered_grid_container = None
                 
-            self.rendered_grid_container = tk.Frame(self.apps_scroll, bg="#020617")
+            self.rendered_grid_container = tk.Frame(self.apps_scroll, bg=THEME['bg_main'])
             self.rendered_grid_container.pack(fill="both", expand=True, padx=5, pady=5)
             self.rendered_grid_container.grid_columnconfigure(0, weight=1)
             self.rendered_grid_container.grid_columnconfigure(1, weight=1)
@@ -1526,10 +1581,10 @@ class TrackerDashboard(ctk.CTk):
                 
                 panel = ctk.CTkFrame(
                     self.rendered_grid_container, 
-                    fg_color="#1e293b", 
+                    fg_color=THEME['bg_card'], 
                     corner_radius=10, 
                     border_width=1, 
-                    border_color="#334155"
+                    border_color=THEME['border_subtle']
                 )
                 panel.grid(row=row_val, column=col_val, padx=10, pady=10, sticky="nsew")
                 
