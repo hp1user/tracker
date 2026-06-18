@@ -295,19 +295,6 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
         )
         self.month_title_label.pack(side="left", fill="x", expand=True)
         
-        # Back month button
-        btn_prev = ctk.CTkButton(
-            self.header_frame,
-            text="<",
-            command=self._prev_month,
-            width=32,
-            height=32,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            fg_color="#1e293b",
-            hover_color="#334155"
-        )
-        btn_prev.pack(side="right", padx=3)
-        
         # Next month button
         btn_next = ctk.CTkButton(
             self.header_frame,
@@ -320,6 +307,19 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
             hover_color="#334155"
         )
         btn_next.pack(side="right", padx=3)
+        
+        # Back month button
+        btn_prev = ctk.CTkButton(
+            self.header_frame,
+            text="<",
+            command=self._prev_month,
+            width=32,
+            height=32,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color="#1e293b",
+            hover_color="#334155"
+        )
+        btn_prev.pack(side="right", padx=3)
         
         desc_lbl = ctk.CTkLabel(
             self,
