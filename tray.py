@@ -1,8 +1,22 @@
 import threading
+import os
 from PIL import Image, ImageDraw
 import pystray
 
 def create_tray_icon_image(width=64, height=64):
+    """Load the user-provided Assets/icon.png or fall back to programmatic generation."""
+    # Resolve absolute path to Assets/icon.png relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    icon_path = os.path.join(script_dir, "Assets", "icon.png")
+    
+    try:
+        if os.path.exists(icon_path):
+            img = Image.open(icon_path)
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+            return img.resize((width, height), Image.Resampling.LANCZOS)
+    except Exception as e:
+        print(f"[Tray] Error loading user icon.png: {e}")
     """Programmatically generate the new logo with horizontal cyan-to-purple gradient."""
     render_size = 512
     image = Image.new("RGBA", (render_size, render_size), (0, 0, 0, 0))

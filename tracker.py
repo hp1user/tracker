@@ -25,8 +25,8 @@ class WindowTracker:
         self.stop_event = threading.Event()
         self.tracker_thread = None
         
-        # Set of apps marked for manual tracking (lowercase)
-        self.tracked_apps = set()
+        # Dictionary of apps marked for manual tracking: {exe_name: category} (lowercase keys)
+        self.tracked_apps_categories = {}
         self.load_tracked_apps()
         
         # State variables
@@ -44,20 +44,20 @@ class WindowTracker:
         self.process_cache = {}
 
     def load_tracked_apps(self):
-        """Load the list of executables manually assigned to categories from the database."""
+        """Load the list of executables and categories manually assigned from the database."""
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             rows = conn.execute("""
-                SELECT exe_name FROM app_categories 
+                SELECT exe_name, category FROM app_categories 
                 WHERE category IN ('Productivity', 'Entertainment', 'Distraction')
             """).fetchall()
-            self.tracked_apps = {row['exe_name'].lower() for row in rows}
+            self.tracked_apps_categories = {row['exe_name'].lower(): row['category'] for row in rows}
             conn.close()
-            print(f"[Tracker] Loaded {len(self.tracked_apps)} manually tracked applications.")
+            print(f"[Tracker] Loaded {len(self.tracked_apps_categories)} manually tracked applications.")
         except Exception as e:
             print(f"[Tracker] Error loading tracked apps: {e}")
-            self.tracked_apps = set()
+            self.tracked_apps_categories = {}
 
     def get_idle_duration(self):
         """Return the idle duration in seconds since last user input."""
@@ -108,11 +108,49 @@ class WindowTracker:
         if len(self.process_cache) > 200:
             self.process_cache.clear()
             
-        # ONLY track if the app is in the manually tracked list
-        if exe_name.lower() not in self.tracked_apps:
-            return None, None
+        exe_lower = exe_name.lower()
+        if exe_lower not in self.tracked_apps_categories:
+            default_excluded = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe"}
+            if exe_lower in default_excluded:
+                return None, None
+                
+            ancestor_name = self.find_tracked_ancestor(pid)
+            if ancestor_name:
+                category = self.tracked_apps_categories[ancestor_name]
+                try:
+                    import database
+                    database.set_app_category(self.db_path, exe_lower, category)
+                    self.tracked_apps_categories[exe_lower] = category
+                    print(f"[Tracker] Automatically added child app: {exe_name} -> {category} (launched by {ancestor_name})")
+                except Exception as e:
+                    print(f"[Tracker] Error auto-categorizing child app {exe_name}: {e}")
+            else:
+                return None, None
             
         return exe_name, title
+
+    def find_tracked_ancestor(self, pid):
+        """Walk up the process tree to find if any ancestor is in the manually tracked list."""
+        try:
+            current_pid = pid
+            for _ in range(3): # Walk up at most 3 levels
+                proc = psutil.Process(current_pid)
+                ppid = proc.ppid()
+                if ppid <= 0:
+                    break
+                parent = psutil.Process(ppid)
+                parent_name = parent.name().lower()
+                
+                # Ignore common system/host shells as launcher ancestors
+                if parent_name in {"explorer.exe", "services.exe", "svchost.exe", "cmd.exe", "powershell.exe"}:
+                    break
+                    
+                if parent_name in self.tracked_apps_categories:
+                    return parent_name
+                current_pid = ppid
+        except Exception:
+            pass
+        return None
 
     def flush_to_buffer(self, date_str, exe_name, window_title, duration):
         """Add duration to the in-memory buffer."""
