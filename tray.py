@@ -1,3 +1,4 @@
+import sys
 import threading
 import os
 from PIL import Image, ImageDraw
@@ -5,9 +6,15 @@ import pystray
 
 def create_tray_icon_image(width=64, height=64):
     """Load the user-provided Assets/icon.png or fall back to programmatic generation."""
-    # Resolve absolute path to Assets/icon.png relative to this script
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    icon_path = os.path.join(script_dir, "Assets", "icon.png")
+    # Resolve absolute path - works both in dev and PyInstaller frozen EXE
+    if getattr(sys, 'frozen', False):
+        # Running as compiled EXE - assets are in sys._MEIPASS
+        base_dir = sys._MEIPASS
+    else:
+        # Running as script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    icon_path = os.path.join(base_dir, "Assets", "icon.png")
     
     try:
         if os.path.exists(icon_path):
