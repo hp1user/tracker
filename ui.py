@@ -711,8 +711,7 @@ class TrackerDashboard(ctk.CTk):
             selected_color=THEME['accent'],
             unselected_color=THEME['bg_card'],
             selected_hover_color=THEME['accent_hover'],
-            text_color=THEME['text_primary'],
-            unselected_text_color=THEME['text_secondary']
+            text_color=THEME['text_primary']
         )
         self.view_selector.set("App Breakdown")
         self.view_selector.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
