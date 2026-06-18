@@ -565,12 +565,6 @@ class TrackerDashboard(ctk.CTk):
         self.fired_alerts = set()
         self.last_alert_date = datetime.date.today().isoformat()
         
-        # Pomodoro Timer State
-        self.pomo_seconds_left = 1500  # 25 minutes
-        self.pomo_state = "idle"       # "idle", "running", "paused"
-        self.pomo_mode = "focus"       # "focus", "break"
-        self.pomo_job = None
-        
         # Window setup
         self.title("Windows Time Tracker")
         self.geometry("950x650")
@@ -596,7 +590,7 @@ class TrackerDashboard(ctk.CTk):
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f172a")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_propagate(False) # Prevent grid geometry resizing from collapsing the sidebar
-        self.sidebar_frame.grid_rowconfigure(5, weight=1) # Spacer row
+        self.sidebar_frame.grid_rowconfigure(4, weight=1) # Spacer row
         
         # Logo / Title
         self.logo_label = ctk.CTkLabel(
@@ -659,62 +653,6 @@ class TrackerDashboard(ctk.CTk):
         )
         self.refresh_btn.grid(row=3, column=0, padx=15, pady=15, sticky="ew")
         
-        # Card 3: Pomodoro Timer Card
-        self.pomo_card = ctk.CTkFrame(self.sidebar_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
-        self.pomo_card.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
-        
-        self.pomo_title = ctk.CTkLabel(
-            self.pomo_card, 
-            text="⏱️ POMODORO TIMER", 
-            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            text_color="#3b82f6"
-        )
-        self.pomo_title.pack(padx=10, pady=(8, 2))
-        
-        self.pomo_mode_label = ctk.CTkLabel(
-            self.pomo_card,
-            text="Focus Mode",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color="#10b981"
-        )
-        self.pomo_mode_label.pack(padx=10)
-        
-        self.pomo_time_label = ctk.CTkLabel(
-            self.pomo_card,
-            text="25:00",
-            font=ctk.CTkFont(family="Consolas", size=22, weight="bold"),
-            text_color="#f8fafc"
-        )
-        self.pomo_time_label.pack(padx=10, pady=2)
-        
-        # Pomodoro Control Buttons Frame
-        pomo_btn_frame = ctk.CTkFrame(self.pomo_card, fg_color="transparent")
-        pomo_btn_frame.pack(padx=10, pady=(2, 8))
-        
-        self.pomo_start_btn = ctk.CTkButton(
-            pomo_btn_frame,
-            text="▶ Start",
-            command=self._toggle_pomodoro,
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            width=70,
-            height=26,
-            fg_color="#10b981",
-            hover_color="#059669"
-        )
-        self.pomo_start_btn.pack(side="left", padx=3)
-        
-        self.pomo_reset_btn = ctk.CTkButton(
-            pomo_btn_frame,
-            text="🔄 Reset",
-            command=self._reset_pomodoro,
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            width=70,
-            height=26,
-            fg_color="#475569",
-            hover_color="#334155"
-        )
-        self.pomo_reset_btn.pack(side="left", padx=3)
-        
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
@@ -722,7 +660,7 @@ class TrackerDashboard(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color="#64748b"
         )
-        self.footer_label.grid(row=6, column=0, padx=20, pady=20, sticky="s")
+        self.footer_label.grid(row=5, column=0, padx=20, pady=20, sticky="s")
 
     def _setup_main_panel(self):
         """Create right side panel with tabs and data lists. Uses tk.Frame for maximum resize performance."""
@@ -1083,8 +1021,7 @@ class TrackerDashboard(ctk.CTk):
         )
         desc_label.pack(fill="x", padx=10, pady=(0, 15))
         
-        # Fetch and group unique apps by category
-        tracked_apps = database.get_all_tracked_apps(self.db_path)
+        # Fetch and group unique apps by category (only show explicitly categorized ones)
         categories = database.get_app_categories(self.db_path)
         
         grouped_settings = {
@@ -1095,12 +1032,9 @@ class TrackerDashboard(ctk.CTk):
             'Uncategorized': []
         }
         
-        for app in tracked_apps:
-            cat = categories.get(app.lower(), "Uncategorized")
+        for app, cat in categories.items():
             if cat in grouped_settings:
                 grouped_settings[cat].append(app)
-            else:
-                grouped_settings['Uncategorized'].append(app)
                 
         has_apps = False
         for cat_name in ['Productivity', 'Entertainment', 'Distraction', 'Untracked', 'Uncategorized']:
@@ -1670,79 +1604,6 @@ class TrackerDashboard(ctk.CTk):
             
         # Re-render Settings tab to show the new app in its list
         self.build_settings_tab()
-
-    def _toggle_pomodoro(self):
-        """Start or pause the Pomodoro timer."""
-        if self.pomo_state == "idle" or self.pomo_state == "paused":
-            self.pomo_state = "running"
-            self.pomo_start_btn.configure(text="⏸ Pause", fg_color="#ef4444", hover_color="#dc2626")
-            self._tick_pomodoro()
-        elif self.pomo_state == "running":
-            self.pomo_state = "paused"
-            self.pomo_start_btn.configure(text="▶ Resume", fg_color="#10b981", hover_color="#059669")
-            if self.pomo_job:
-                self.after_cancel(self.pomo_job)
-                self.pomo_job = None
-
-    def _reset_pomodoro(self):
-        """Reset the Pomodoro timer back to default settings."""
-        if self.pomo_job:
-            self.after_cancel(self.pomo_job)
-            self.pomo_job = None
-            
-        self.pomo_state = "idle"
-        self.pomo_mode = "focus"
-        self.pomo_seconds_left = 1500 # 25 minutes
-        
-        self.pomo_mode_label.configure(text="Focus Mode", text_color="#10b981")
-        self.pomo_time_label.configure(text="25:00")
-        self.pomo_start_btn.configure(text="▶ Start", fg_color="#10b981", hover_color="#059669")
-
-    def _tick_pomodoro(self):
-        """Countdown one second and transition if timer runs out."""
-        if self.pomo_state != "running":
-            return
-            
-        if self.pomo_seconds_left > 0:
-            self.pomo_seconds_left -= 1
-            mins = self.pomo_seconds_left // 60
-            secs = self.pomo_seconds_left % 60
-            self.pomo_time_label.configure(text=f"{mins:02d}:{secs:02d}")
-            self.pomo_job = self.after(1000, self._tick_pomodoro)
-        else:
-            # Timer completed!
-            self.pomo_state = "idle"
-            
-            # Sound beep alert (native Windows sound)
-            try:
-                import winsound
-                winsound.Beep(440, 600)
-            except Exception:
-                pass
-                
-            # Trigger notification callback
-            if self.pomo_mode == "focus":
-                msg = "Great job! Focus session complete. Time for a short break!"
-                title = "Focus Complete!"
-                # Set up break mode (5 minutes)
-                self.pomo_mode = "break"
-                self.pomo_seconds_left = 300
-                self.pomo_mode_label.configure(text="Break Mode", text_color="#3b82f6")
-                self.pomo_time_label.configure(text="05:00")
-            else:
-                msg = "Break is over! Time to get back to work."
-                title = "Break Ended!"
-                # Set up focus mode (25 minutes)
-                self.pomo_mode = "focus"
-                self.pomo_seconds_left = 1500
-                self.pomo_mode_label.configure(text="Focus Mode", text_color="#10b981")
-                self.pomo_time_label.configure(text="25:00")
-                
-            # Send notification via callback if registered
-            if self.on_notify:
-                self.on_notify(msg, title)
-                
-            self.pomo_start_btn.configure(text="▶ Start", fg_color="#10b981", hover_color="#059669")
 
     def _save_goals(self):
         """Save the hours and minutes settings for categories back to database."""

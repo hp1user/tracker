@@ -198,16 +198,19 @@ def get_app_categories(db_path):
         conn.close()
 
 def set_app_category(db_path, exe_name, category):
-    """Assign or update a category for a specific executable name."""
+    """Assign or update a category for a specific executable name. If 'Uncategorized', deletes it."""
     conn = get_db_connection(db_path)
     try:
         with conn:
-            conn.execute("""
-                INSERT INTO app_categories (exe_name, category) 
-                VALUES (?, ?) 
-                ON CONFLICT(exe_name) 
-                DO UPDATE SET category = excluded.category
-            """, (exe_name.lower(), category))
+            if category == "Uncategorized":
+                conn.execute("DELETE FROM app_categories WHERE LOWER(exe_name) = LOWER(?)", (exe_name,))
+            else:
+                conn.execute("""
+                    INSERT INTO app_categories (exe_name, category) 
+                    VALUES (?, ?) 
+                    ON CONFLICT(exe_name) 
+                    DO UPDATE SET category = excluded.category
+                """, (exe_name.lower(), category))
     finally:
         conn.close()
 
