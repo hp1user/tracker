@@ -940,7 +940,7 @@ class TrackerDashboard(ctk.CTk):
         
         update_desc = ctk.CTkLabel(
             update_info_frame,
-            text="Current version: v1.0.0. Check for new updates on GitHub.",
+            text="Current version: v1.0.1. Check for new updates on GitHub.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=THEME['text_secondary'],
             anchor="w"
@@ -1998,7 +1998,7 @@ class TrackerDashboard(ctk.CTk):
         import webbrowser
         import tkinter.messagebox as messagebox
         
-        current_version = "v1.0.0"
+        current_version = "v1.0.1"
         url = "https://api.github.com/repos/hp1user/tracker/releases/latest"
         req = urllib.request.Request(
             url, 
