@@ -70,28 +70,28 @@ def save_usage(db_path, records):
         conn.close()
 
 def get_today_total_time(db_path, date_str):
-    """Return total time spent today in seconds (excluding Untracked apps)."""
+    """Return total time spent today in seconds (only manually added/categorized apps)."""
     conn = get_db_connection(db_path)
     try:
         row = conn.execute("""
             SELECT SUM(u.duration_seconds) as total 
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE u.date = ? AND (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE u.date = ? AND c.category IN ('Productivity', 'Entertainment', 'Distraction')
         """, (date_str,)).fetchone()
         return row['total'] if row and row['total'] is not None else 0
     finally:
         conn.close()
 
 def get_today_app_breakdown(db_path, date_str):
-    """Return a list of dicts for app usage breakdown: [{'exe_name': '...', 'duration': 123}] (excluding Untracked apps)"""
+    """Return a list of dicts for app usage breakdown (only manually added/categorized apps)"""
     conn = get_db_connection(db_path)
     try:
         rows = conn.execute("""
             SELECT u.exe_name, SUM(u.duration_seconds) as duration
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE u.date = ? AND (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE u.date = ? AND c.category IN ('Productivity', 'Entertainment', 'Distraction')
             GROUP BY u.exe_name
             ORDER BY duration DESC
         """, (date_str,)).fetchall()
@@ -100,15 +100,15 @@ def get_today_app_breakdown(db_path, date_str):
         conn.close()
 
 def get_daily_average(db_path):
-    """Return the daily average usage in seconds across all logged days (excluding Untracked apps)."""
+    """Return the daily average usage in seconds across all logged days (only manually added/categorized apps)."""
     conn = get_db_connection(db_path)
     try:
         row = conn.execute("""
             SELECT AVG(daily_sum) as avg_duration FROM (
                 SELECT u.date, SUM(u.duration_seconds) as daily_sum
                 FROM app_usage u
-                LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-                WHERE c.category IS NULL OR c.category != 'Untracked'
+                JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+                WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
                 GROUP BY u.date
             )
         """).fetchone()
@@ -125,9 +125,12 @@ def get_browser_highlights(db_path, date_str):
     conn = get_db_connection(db_path)
     try:
         query = f"""
-            SELECT window_title, duration_seconds
-            FROM app_usage
-            WHERE date = ? AND LOWER(exe_name) IN ({','.join(['?']*len(browser_exes))})
+            SELECT u.window_title, u.duration_seconds
+            FROM app_usage u
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE u.date = ? 
+              AND c.category IN ('Productivity', 'Entertainment', 'Distraction')
+              AND LOWER(u.exe_name) IN ({','.join(['?']*len(browser_exes))})
         """
         rows = conn.execute(query, (date_str, *browser_exes)).fetchall()
         
@@ -215,15 +218,15 @@ def set_app_category(db_path, exe_name, category):
         conn.close()
 
 def get_category_durations(db_path, date_str):
-    """Get the total tracking duration spent today per category (excluding Untracked)."""
+    """Get the total tracking duration spent today per category."""
     conn = get_db_connection(db_path)
     try:
         rows = conn.execute("""
-            SELECT COALESCE(c.category, 'Uncategorized') as category, SUM(u.duration_seconds) as duration
+            SELECT c.category, SUM(u.duration_seconds) as duration
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE u.date = ?
-            GROUP BY category
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE u.date = ? AND c.category IN ('Productivity', 'Entertainment', 'Distraction')
+            GROUP BY c.category
         """, (date_str,)).fetchall()
         
         result = {
@@ -234,11 +237,8 @@ def get_category_durations(db_path, date_str):
         }
         for row in rows:
             cat = row['category']
-            # If the category is not one of the pre-defined ones, lump it under Uncategorized
             if cat in result:
                 result[cat] += row['duration']
-            elif cat != 'Untracked':
-                result['Uncategorized'] += row['duration']
         return result
     finally:
         conn.close()
@@ -253,15 +253,15 @@ def get_all_tracked_apps(db_path):
         conn.close()
 
 def get_weekly_average(db_path):
-    """Return the average daily screen time (excluding Untracked) over the last 7 days."""
+    """Return the average daily screen time (only manually added/categorized apps) over the last 7 days."""
     conn = get_db_connection(db_path)
     try:
         row = conn.execute("""
             SELECT AVG(daily_sum) as avg_duration FROM (
                 SELECT u.date, SUM(u.duration_seconds) as daily_sum
                 FROM app_usage u
-                LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-                WHERE (c.category IS NULL OR c.category != 'Untracked')
+                JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+                WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
                   AND u.date >= date('now', 'localtime', '-7 days')
                 GROUP BY u.date
             )
@@ -271,14 +271,14 @@ def get_weekly_average(db_path):
         conn.close()
 
 def get_monthly_total(db_path):
-    """Return the total screen time in seconds spent in the current month (excluding Untracked)."""
+    """Return the total screen time in seconds spent in the current month (only manually added/categorized apps)."""
     conn = get_db_connection(db_path)
     try:
         row = conn.execute("""
             SELECT SUM(u.duration_seconds) as total
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
               AND u.date >= date('now', 'localtime', 'start of month')
         """).fetchone()
         return row['total'] if row and row['total'] is not None else 0
@@ -286,14 +286,14 @@ def get_monthly_total(db_path):
         conn.close()
 
 def get_monthly_breakdown(db_path):
-    """Return the top 5 applications spent in the current month (excluding Untracked)."""
+    """Return the top 5 applications spent in the current month (only manually added/categorized apps)."""
     conn = get_db_connection(db_path)
     try:
         rows = conn.execute("""
             SELECT u.exe_name, SUM(u.duration_seconds) as duration
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
               AND u.date >= date('now', 'localtime', 'start of month')
             GROUP BY u.exe_name
             ORDER BY duration DESC
@@ -304,15 +304,15 @@ def get_monthly_breakdown(db_path):
         conn.close()
 
 def get_daily_totals_for_month(db_path, year, month):
-    """Retrieve daily screen time sums (excluding Untracked) for a given calendar month."""
+    """Retrieve daily screen time sums (only manually added/categorized apps) for a given calendar month."""
     conn = get_db_connection(db_path)
     prefix = f"{year:04d}-{month:02d}-%"
     try:
         rows = conn.execute("""
             SELECT u.date, SUM(u.duration_seconds) as duration
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
               AND u.date LIKE ?
             GROUP BY u.date
         """, (prefix,)).fetchall()
@@ -321,14 +321,14 @@ def get_daily_totals_for_month(db_path, year, month):
         conn.close()
 
 def get_last_7_days_totals(db_path):
-    """Retrieve daily screen time sums (excluding Untracked) for the last 7 calendar days."""
+    """Retrieve daily screen time sums (only manually added/categorized apps) for the last 7 calendar days."""
     conn = get_db_connection(db_path)
     try:
         rows = conn.execute("""
             SELECT u.date, SUM(u.duration_seconds) as duration
             FROM app_usage u
-            LEFT JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
-            WHERE (c.category IS NULL OR c.category != 'Untracked')
+            JOIN app_categories c ON LOWER(u.exe_name) = LOWER(c.exe_name)
+            WHERE c.category IN ('Productivity', 'Entertainment', 'Distraction')
               AND u.date >= date('now', 'localtime', '-7 days')
             GROUP BY u.date
             ORDER BY u.date ASC

@@ -1214,7 +1214,7 @@ class TrackerDashboard(ctk.CTk):
         
         # If the app was set to Untracked or moved out of it, update tracker cached set dynamically
         if self.tracker:
-            self.tracker.load_untracked_apps()
+            self.tracker.load_tracked_apps()
             
         # Redraw settings panel immediately to show them in their new section grid
         self.build_settings_tab()
@@ -1756,7 +1756,7 @@ class TrackerDashboard(ctk.CTk):
         
         # Update background tracker's cache if active
         if self.tracker:
-            self.tracker.load_untracked_apps()
+            self.tracker.load_tracked_apps()
             
         # Re-render Settings tab to show the new app in its list
         self.build_settings_tab()

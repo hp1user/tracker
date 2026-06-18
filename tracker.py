@@ -25,9 +25,9 @@ class WindowTracker:
         self.stop_event = threading.Event()
         self.tracker_thread = None
         
-        # Set of apps marked as Untracked (lowercase)
-        self.untracked_apps = set()
-        self.load_untracked_apps()
+        # Set of apps marked for manual tracking (lowercase)
+        self.tracked_apps = set()
+        self.load_tracked_apps()
         
         # State variables
         self.current_exe = None
@@ -43,18 +43,21 @@ class WindowTracker:
         # Process name cache to minimize psutil lookups
         self.process_cache = {}
 
-    def load_untracked_apps(self):
-        """Load the list of executables marked as 'Untracked' from the database."""
+    def load_tracked_apps(self):
+        """Load the list of executables manually assigned to categories from the database."""
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT exe_name FROM app_categories WHERE category = 'Untracked'").fetchall()
-            self.untracked_apps = {row['exe_name'].lower() for row in rows}
+            rows = conn.execute("""
+                SELECT exe_name FROM app_categories 
+                WHERE category IN ('Productivity', 'Entertainment', 'Distraction')
+            """).fetchall()
+            self.tracked_apps = {row['exe_name'].lower() for row in rows}
             conn.close()
-            print(f"[Tracker] Loaded {len(self.untracked_apps)} untracked applications.")
+            print(f"[Tracker] Loaded {len(self.tracked_apps)} manually tracked applications.")
         except Exception as e:
-            print(f"[Tracker] Error loading untracked apps: {e}")
-            self.untracked_apps = set()
+            print(f"[Tracker] Error loading tracked apps: {e}")
+            self.tracked_apps = set()
 
     def get_idle_duration(self):
         """Return the idle duration in seconds since last user input."""
@@ -105,9 +108,8 @@ class WindowTracker:
         if len(self.process_cache) > 200:
             self.process_cache.clear()
             
-        # Check if the process is marked as Untracked (ignored) or is a default excluded process
-        default_excluded = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe"}
-        if exe_name.lower() in self.untracked_apps or exe_name.lower() in default_excluded:
+        # ONLY track if the app is in the manually tracked list
+        if exe_name.lower() not in self.tracked_apps:
             return None, None
             
         return exe_name, title
@@ -141,7 +143,7 @@ class WindowTracker:
 
     def start(self):
         """Start the background tracking thread."""
-        self.load_untracked_apps() # Reload list on startup
+        self.load_tracked_apps() # Reload list on startup
         self.stop_event.clear()
         self.tracker_thread = threading.Thread(target=self._run_loop, name="TrackerThread", daemon=True)
         self.tracker_thread.start()
