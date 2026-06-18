@@ -2,23 +2,52 @@ import threading
 from PIL import Image, ImageDraw
 import pystray
 
-def create_tray_icon_image():
-    """Programmatically generate a clean, modern clock icon for the system tray."""
-    width, height = 64, 64
-    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+def create_tray_icon_image(width=64, height=64):
+    """Programmatically generate the new logo with horizontal cyan-to-purple gradient."""
+    render_size = 512
+    image = Image.new("RGBA", (render_size, render_size), (0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
     
-    # Outer dark blue-grey rounded container
-    dc.rounded_rectangle([4, 4, 60, 60], radius=16, fill=(30, 41, 59, 255), outline=(71, 85, 105, 255), width=3)
+    # 1. Background: rounded square with smooth dark color matching Zinc theme
+    bg_color = (24, 24, 27, 255) # #18181b
+    border_color = (39, 39, 42, 255) # #27272a
+    dc.rounded_rectangle([16, 16, 496, 496], radius=110, fill=bg_color, outline=border_color, width=12)
     
-    # Inner clock face (dodger blue / teal gradient style color)
-    dc.ellipse([16, 16, 48, 48], fill=(59, 130, 246, 255))
+    # Create mask for the gradient shapes (arch, arrow, bucket)
+    mask = Image.new("L", (render_size, render_size), 0)
+    dc_mask = ImageDraw.Draw(mask)
     
-    # Clock hands (white)
-    dc.line([32, 32, 32, 22], fill=(255, 255, 255, 255), width=3)
-    dc.line([32, 32, 42, 32], fill=(255, 255, 255, 255), width=3)
+    # A. Dashed arch on top
+    for start_angle in range(195, 346, 15):
+        dc_mask.arc([96, 96, 416, 416], start=start_angle, end=start_angle + 8, fill=255, width=16)
+        
+    # B. Downward arrow
+    dc_mask.rectangle([256 - 14, 140, 256 + 14, 280], fill=255)
+    dc_mask.polygon([(256 - 45, 290), (256 + 45, 290), (256, 350)], fill=255)
     
-    return image
+    # C. Bottom curved bucket
+    dc_mask.arc([96, 200, 416, 420], start=0, end=180, fill=255, width=44)
+    
+    # Create horizontal cyan-to-purple gradient
+    gradient_1d = Image.new("RGB", (render_size, 1))
+    r1, g1, b1 = 34, 211, 238  # Softer Cyan (#22d3ee)
+    r2, g2, b2 = 121, 99, 210  # Faded Purple (#7963d2)
+    pixels = []
+    for x in range(render_size):
+        t = x / (render_size - 1)
+        r = int(r1 + (r2 - r1) * t)
+        g = int(g1 + (g2 - g1) * t)
+        b = int(b1 + (b2 - b1) * t)
+        pixels.append((r, g, b))
+    gradient_1d.putdata(pixels)
+    gradient = gradient_1d.resize((render_size, render_size))
+    
+    # Paste gradient onto the background image using the mask
+    image.paste(gradient, (0, 0), mask=mask)
+    
+    # Downscale to the desired size using LANCZOS for super smooth anti-aliased output
+    output_image = image.resize((width, height), Image.Resampling.LANCZOS)
+    return output_image
 
 class SystemTrayApp:
     def __init__(self, on_open_dashboard, on_quit):

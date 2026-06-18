@@ -11,6 +11,8 @@ import database
 import win32gui
 import win32process
 import psutil
+from PIL import ImageTk
+from tray import create_tray_icon_image
 
 # Configure customtkinter colors and themes
 ctk.set_appearance_mode("dark")
@@ -22,8 +24,8 @@ THEME = {
     'bg_sidebar': '#18181b',     # Slightly lighter dark grey (Zinc-900)
     'bg_card': '#1c1c1e',        # Card/Panel background (Zinc-850)
     'border_subtle': '#27272a',  # Zinc-800 borders
-    'accent': '#8b5cf6',         # Violet accent (Tailwind Violet-500)
-    'accent_hover': '#7c3aed',   # Violet hover (Tailwind Violet-600)
+    'accent': '#7963d2',         # Softer desaturated Violet accent
+    'accent_hover': '#634eb7',   # Softer desaturated Violet hover
     'text_primary': '#f4f4f5',   # Zinc-100 high-contrast text
     'text_secondary': '#a1a1aa', # Zinc-400 muted text
     'text_muted': '#71717a',     # Zinc-500 dark muted text
@@ -421,13 +423,13 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
                     bg_color = THEME['bg_card']
                     text_color = THEME['text_muted']
                 elif duration < 7200:
-                    bg_color = "#2e1065"   # Very dark purple (Zinc Violet-950/900 shade)
+                    bg_color = "#2c1c5c"   # Dark desaturated purple
                     text_color = "#ddd6fe"  # Violet-200
                 elif duration < 18000:
-                    bg_color = "#6d28d9"   # Medium dark purple (Violet-700)
+                    bg_color = "#5b49b0"   # Medium desaturated purple
                     text_color = "#f5f3ff"  # Violet-50
                 else:
-                    bg_color = "#8b5cf6"   # Bright violet (Violet-500)
+                    bg_color = THEME['accent']   # Softer desaturated Violet accent (#7963d2)
                     text_color = "#ffffff"  # Pure white
                     
                 cell = tk.Frame(self.grid_container, bg=bg_color, borderwidth=1, relief="flat", highlightbackground=THEME['border_subtle'], highlightthickness=1)
@@ -602,6 +604,14 @@ class TrackerDashboard(ctk.CTk):
         self.minsize(850, 550)
         self.configure(fg_color=THEME['bg_main'])
         
+        # Set window icon
+        try:
+            self.logo_pil = create_tray_icon_image(64, 64)
+            self.logo_tk = ImageTk.PhotoImage(self.logo_pil)
+            self.iconphoto(True, self.logo_tk)
+        except Exception as e:
+            print(f"[UI] Error setting window icon: {e}")
+        
         # Intercept closing
         self.protocol("WM_DELETE_WINDOW", self.hide_window)
         
@@ -625,12 +635,29 @@ class TrackerDashboard(ctk.CTk):
         self.sidebar_frame.grid_rowconfigure(4, weight=1) # Spacer row
         
         # Logo / Title
-        self.logo_label = ctk.CTkLabel(
-            self.sidebar_frame, 
-            text="⏱️ Tracker", 
-            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
-            text_color=THEME['accent']
-        )
+        try:
+            self.sidebar_logo_pil = create_tray_icon_image(32, 32)
+            self.sidebar_logo_image = ctk.CTkImage(
+                light_image=self.sidebar_logo_pil,
+                dark_image=self.sidebar_logo_pil,
+                size=(28, 28)
+            )
+            self.logo_label = ctk.CTkLabel(
+                self.sidebar_frame,
+                text=" Tracker",
+                image=self.sidebar_logo_image,
+                compound="left",
+                font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
+                text_color=THEME['text_primary']
+            )
+        except Exception as e:
+            print(f"[UI] Error creating sidebar logo: {e}")
+            self.logo_label = ctk.CTkLabel(
+                self.sidebar_frame, 
+                text="⏱️ Tracker", 
+                font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
+                text_color=THEME['accent']
+            )
         self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 20), sticky="w")
         
         # Card 1: Today's Time
