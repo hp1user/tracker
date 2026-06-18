@@ -1,0 +1,5 @@
+pystray>=0.19.5
+Pillow>=10.3.0
+pywin32>=306
+psutil>=5.9.8
+customtkinter>=5.2.2
