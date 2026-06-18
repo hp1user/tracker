@@ -8,6 +8,9 @@ import winreg
 import sys
 import customtkinter as ctk
 import database
+import win32gui
+import win32process
+import psutil
 
 # Configure customtkinter colors and themes
 ctk.set_appearance_mode("dark")
@@ -48,6 +51,34 @@ def format_duration(seconds):
         parts.append(f"{secs}s")
         
     return " ".join(parts)
+
+def get_open_window_exes():
+    """Scan top-level visible windows to extract currently open user-visible executables."""
+    exes = set()
+    def enum_cb(hwnd, extra):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if title and title != "System/Background Process":
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                if pid > 0:
+                    try:
+                        proc = psutil.Process(pid)
+                        name = proc.name()
+                        if name:
+                            exes.add(name.lower())
+                    except Exception:
+                        pass
+        return True
+    
+    try:
+        win32gui.EnumWindows(enum_cb, None)
+    except Exception as e:
+        print(f"[UI] Error enumerating windows: {e}")
+        
+    # Exclude typical system shells / tracker itself from the list to avoid cluttering
+    excluded_defaults = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe"}
+    filtered_exes = [name for name in exes if name not in excluded_defaults]
+    return sorted(list(filtered_exes))
 
 class AppRow(tk.Frame):
     """Custom compact row displaying application usage. Inherits from tk.Frame for maximum resize performance."""
@@ -669,6 +700,68 @@ class TrackerDashboard(ctk.CTk):
         )
         browse_btn.pack(side="right", padx=15, pady=15)
         
+        # Section: Quick-Add Application Category Card
+        quick_add_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        quick_add_card.pack(fill="x", padx=10, pady=5)
+        
+        quick_add_info_frame = ctk.CTkFrame(quick_add_card, fg_color="transparent")
+        quick_add_info_frame.pack(fill="x", padx=15, pady=10)
+        
+        quick_add_title = ctk.CTkLabel(
+            quick_add_info_frame,
+            text="➕ Quick-Add / Categorize Application",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            anchor="w"
+        )
+        quick_add_title.pack(fill="x", pady=(5, 2))
+        
+        quick_add_desc = ctk.CTkLabel(
+            quick_add_info_frame,
+            text="Select from currently open windows or type a custom executable name (e.g. notepad.exe) to assign it to a category.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color="#94a3b8",
+            anchor="w"
+        )
+        quick_add_desc.pack(fill="x", pady=(0, 10))
+        
+        # Controls row
+        controls_frame = ctk.CTkFrame(quick_add_info_frame, fg_color="transparent")
+        controls_frame.pack(fill="x", pady=5)
+        
+        open_exes = get_open_window_exes()
+        self.add_app_combo = ctk.CTkComboBox(
+            controls_frame,
+            values=open_exes,
+            width=250,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            dropdown_font=ctk.CTkFont(family="Segoe UI", size=11)
+        )
+        self.add_app_combo.set("Select or type app name...")
+        self.add_app_combo.pack(side="left", padx=(0, 10))
+        
+        self.add_cat_menu = ctk.CTkOptionMenu(
+            controls_frame,
+            values=["Productivity", "Entertainment", "Distraction", "Untracked", "Uncategorized"],
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            width=130,
+            fg_color="#334155",
+            button_color="#475569",
+            button_hover_color="#64748b"
+        )
+        self.add_cat_menu.set("Untracked") # Default to Untracked as that's the primary use-case
+        self.add_cat_menu.pack(side="left", padx=(0, 10))
+        
+        add_btn = ctk.CTkButton(
+            controls_frame,
+            text="Assign Category",
+            command=self._quick_add_app,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=130,
+            fg_color="#3b82f6",
+            hover_color="#2563eb"
+        )
+        add_btn.pack(side="left")
+        
         # Section 2: App Categories Header
         title_categories = ctk.CTkLabel(
             self.settings_scroll,
@@ -1163,3 +1256,29 @@ class TrackerDashboard(ctk.CTk):
     def hide_window(self):
         """Hide the window instead of destroying/quitting."""
         self.withdraw()
+
+    def _quick_add_app(self):
+        """Read the combobox selection, normalize the app name, save to DB, update tracker, and refresh UI."""
+        app_name = self.add_app_combo.get().strip()
+        
+        # Check if the user hasn't selected/typed anything or left the placeholder text
+        if not app_name or app_name == "Select or type app name...":
+            return
+            
+        # Normalize: strip, lowercase, ensure it has a .exe suffix if it has no extension
+        app_name = app_name.lower()
+        if not app_name.endswith(".exe") and "." not in app_name:
+            app_name += ".exe"
+            
+        category = self.add_cat_menu.get()
+        
+        # Save to database
+        database.set_app_category(self.db_path, app_name, category)
+        print(f"[UI] Quick-added mapping: {app_name} -> {category}")
+        
+        # Update background tracker's cache if active
+        if self.tracker:
+            self.tracker.load_untracked_apps()
+            
+        # Re-render Settings tab to show the new app in its list
+        self.build_settings_tab()
