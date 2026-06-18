@@ -1905,6 +1905,7 @@ class TrackerDashboard(ctk.CTk):
         
         def _do_send():
             import urllib.request
+            import urllib.error
             import json as _json
             
             payload = _json.dumps({
@@ -1934,11 +1935,24 @@ class TrackerDashboard(ctk.CTk):
                         self.after(0, lambda: self.feedback_textbox.delete("0.0", "end"))
                         self.after(0, lambda: self.feedback_name.delete(0, "end"))
                     else:
-                        self.after(0, lambda: self.feedback_status_lbl.configure(
-                            text="Failed to send. Please try again.", text_color="#f87171"))
+                        msg = result.get("message", "Unknown error")
+                        err_text = f"Failed: {msg}"
+                        self.after(0, lambda t=err_text: self.feedback_status_lbl.configure(
+                            text=t, text_color="#f87171"))
+            except urllib.error.HTTPError as e:
+                # Read the error body for more detail
+                try:
+                    err_body = _json.loads(e.read().decode())
+                    err_msg = err_body.get("message", str(e.code))
+                except Exception:
+                    err_msg = f"HTTP {e.code}"
+                err_text = f"Error: {err_msg}"
+                self.after(0, lambda t=err_text: self.feedback_status_lbl.configure(
+                    text=t, text_color="#f87171"))
             except Exception as e:
-                self.after(0, lambda: self.feedback_status_lbl.configure(
-                    text=f"Error: {e}", text_color="#f87171"))
+                err_text = f"Network error: {type(e).__name__}"
+                self.after(0, lambda t=err_text: self.feedback_status_lbl.configure(
+                    text=t, text_color="#f87171"))
         
         threading.Thread(target=_do_send, daemon=True).start()
 
