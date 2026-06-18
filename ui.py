@@ -844,6 +844,42 @@ class TrackerDashboard(ctk.CTk):
         )
         browse_btn.pack(side="right", padx=15, pady=15)
         
+        # Danger Zone / Clear Data Card
+        reset_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#7f1d1d")
+        reset_card.pack(fill="x", padx=10, pady=5)
+        
+        reset_info_frame = ctk.CTkFrame(reset_card, fg_color="transparent")
+        reset_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
+        
+        reset_label = ctk.CTkLabel(
+            reset_info_frame,
+            text="Danger Zone: Clear All Tracker Data",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color="#ef4444",
+            anchor="w"
+        )
+        reset_label.pack(fill="x")
+        
+        reset_desc = ctk.CTkLabel(
+            reset_info_frame,
+            text="Permanently delete all logged screen times, category mappings, and goals.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color="#94a3b8",
+            anchor="w"
+        )
+        reset_desc.pack(fill="x")
+        
+        clear_btn = ctk.CTkButton(
+            reset_card,
+            text="Clear All Data",
+            command=self._clear_database_data,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=120,
+            fg_color="#991b1b",
+            hover_color="#b91c1c"
+        )
+        clear_btn.pack(side="right", padx=15, pady=15)
+        
         # Section: Daily Goals Card
         goals_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
         goals_card.pack(fill="x", padx=10, pady=5)
@@ -1193,6 +1229,45 @@ class TrackerDashboard(ctk.CTk):
         except Exception as e:
             print(f"[UI] Error moving database: {e}")
             self.db_status_label.configure(text=f"❌ Error moving database: {e}", text_color="#ef4444")
+
+    def _clear_database_data(self):
+        """Prompt user for confirmation, stop tracker, clear SQLite tables, restart tracker, and refresh UI."""
+        from tkinter import messagebox
+        
+        confirm = messagebox.askyesno(
+            "Clear All Data",
+            "Are you absolutely sure you want to permanently delete all logged active times, category mappings, and settings?\n\nThis action cannot be undone.",
+            icon="warning"
+        )
+        
+        if not confirm:
+            return
+            
+        try:
+            # 1. Stop background tracker to avoid DB locks
+            was_tracking = False
+            if self.tracker:
+                was_tracking = True
+                self.tracker.stop()
+                
+            # 2. Clear all tables in SQLite
+            database.clear_all_data(self.db_path)
+            database.init_db(self.db_path)
+            
+            # 3. Reset internal UI states
+            self.fired_alerts.clear()
+            
+            # 4. Restart tracker if it was active
+            if was_tracking:
+                self.tracker.start()
+                
+            # 5. Rebuild and refresh all tabs to update UI metrics back to zero
+            self.refresh_data()
+            self.build_settings_tab()
+            
+            messagebox.showinfo("Success", "All tracker data has been successfully cleared and reset.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred while clearing data: {e}")
 
     def open_weekly_popup(self):
         """Open weekly daily breakdown pop-up modal."""

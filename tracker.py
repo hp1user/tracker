@@ -105,8 +105,9 @@ class WindowTracker:
         if len(self.process_cache) > 200:
             self.process_cache.clear()
             
-        # Check if the process is marked as Untracked (ignored)
-        if exe_name.lower() in self.untracked_apps:
+        # Check if the process is marked as Untracked (ignored) or is a default excluded process
+        default_excluded = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe"}
+        if exe_name.lower() in self.untracked_apps or exe_name.lower() in default_excluded:
             return None, None
             
         return exe_name, title

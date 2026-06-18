@@ -348,3 +348,15 @@ def get_category_goal(db_path, category):
 def set_category_goal(db_path, category, seconds):
     """Save the daily goal limit for a category in seconds."""
     set_setting(db_path, f"goal_{category}", str(seconds))
+
+def clear_all_data(db_path):
+    """Truncate/clear all records from app_usage, settings, and app_categories tables."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute("DELETE FROM app_usage")
+            conn.execute("DELETE FROM settings")
+            conn.execute("DELETE FROM app_categories")
+            conn.execute("VACUUM")
+    finally:
+        conn.close()
