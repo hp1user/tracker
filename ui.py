@@ -995,6 +995,61 @@ class TrackerDashboard(ctk.CTk):
         )
         kill_btn.pack(side="right", padx=15, pady=15)
         
+        # Feedback Card
+        feedback_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
+        feedback_card.pack(fill="x", padx=10, pady=5)
+        
+        feedback_inner = ctk.CTkFrame(feedback_card, fg_color="transparent")
+        feedback_inner.pack(fill="x", padx=15, pady=12)
+        
+        feedback_title = ctk.CTkLabel(
+            feedback_inner,
+            text="Send Feedback",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            anchor="w"
+        )
+        feedback_title.pack(fill="x")
+        
+        feedback_desc = ctk.CTkLabel(
+            feedback_inner,
+            text="Share your thoughts, bug reports or suggestions. Opens your email client.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=THEME['text_secondary'],
+            anchor="w"
+        )
+        feedback_desc.pack(fill="x", pady=(0, 8))
+        
+        self.feedback_textbox = ctk.CTkTextbox(
+            feedback_inner,
+            height=80,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=THEME['bg_main'],
+            text_color=THEME['text_primary'],
+            border_color=THEME['border_subtle'],
+            border_width=1,
+            corner_radius=6,
+            wrap="word"
+        )
+        self.feedback_textbox.pack(fill="x", pady=(0, 10))
+        self.feedback_textbox.insert("0.0", "Type your feedback here...")
+        
+        # Clear placeholder on focus
+        def _clear_placeholder(event):
+            if self.feedback_textbox.get("0.0", "end").strip() == "Type your feedback here...":
+                self.feedback_textbox.delete("0.0", "end")
+        self.feedback_textbox.bind("<FocusIn>", _clear_placeholder)
+        
+        send_btn = ctk.CTkButton(
+            feedback_inner,
+            text="Send Feedback via Email",
+            command=self._send_feedback,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color=THEME['accent'],
+            hover_color=THEME['accent_hover'],
+            height=32
+        )
+        send_btn.pack(anchor="w")
+        
         # Danger Zone / Clear Data Card
         reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
         reset_card.pack(fill="x", padx=10, pady=5)
@@ -1805,6 +1860,21 @@ class TrackerDashboard(ctk.CTk):
                         title = "Target Reached!"
                         if self.on_notify:
                             self.on_notify(msg, title)
+
+    def _send_feedback(self):
+        """Open the default email client with feedback pre-filled."""
+        import urllib.parse
+        import webbrowser
+        
+        body = self.feedback_textbox.get("0.0", "end").strip()
+        if not body or body == "Type your feedback here...":
+            body = ""
+        
+        mailto = "mailto:contact@wofstudioz.com?subject={}&body={}".format(
+            urllib.parse.quote("Time Tracker Feedback"),
+            urllib.parse.quote(body)
+        )
+        webbrowser.open(mailto)
 
     def _force_quit_app(self):
         """Immediately force-terminate the application and all threads."""
