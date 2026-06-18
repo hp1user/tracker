@@ -1012,13 +1012,28 @@ class TrackerDashboard(ctk.CTk):
         
         feedback_desc = ctk.CTkLabel(
             feedback_inner,
-            text="Share your thoughts, bug reports or suggestions. Opens your email client.",
+            text="Share your thoughts, bug reports or suggestions directly with us.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=THEME['text_secondary'],
             anchor="w"
         )
         feedback_desc.pack(fill="x", pady=(0, 8))
         
+        # Name field
+        self.feedback_name = ctk.CTkEntry(
+            feedback_inner,
+            placeholder_text="Your name (optional)",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=THEME['bg_main'],
+            text_color=THEME['text_primary'],
+            border_color=THEME['border_subtle'],
+            border_width=1,
+            corner_radius=6,
+            height=34
+        )
+        self.feedback_name.pack(fill="x", pady=(0, 6))
+        
+        # Feedback textbox
         self.feedback_textbox = ctk.CTkTextbox(
             feedback_inner,
             height=80,
@@ -1033,22 +1048,34 @@ class TrackerDashboard(ctk.CTk):
         self.feedback_textbox.pack(fill="x", pady=(0, 10))
         self.feedback_textbox.insert("0.0", "Type your feedback here...")
         
-        # Clear placeholder on focus
         def _clear_placeholder(event):
             if self.feedback_textbox.get("0.0", "end").strip() == "Type your feedback here...":
                 self.feedback_textbox.delete("0.0", "end")
         self.feedback_textbox.bind("<FocusIn>", _clear_placeholder)
         
+        # Send row: button + status label
+        send_row = ctk.CTkFrame(feedback_inner, fg_color="transparent")
+        send_row.pack(fill="x")
+        
         send_btn = ctk.CTkButton(
-            feedback_inner,
-            text="Send Feedback via Email",
+            send_row,
+            text="Send Feedback",
             command=self._send_feedback,
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color=THEME['accent'],
             hover_color=THEME['accent_hover'],
+            width=130,
             height=32
         )
-        send_btn.pack(anchor="w")
+        send_btn.pack(side="left")
+        
+        self.feedback_status_lbl = ctk.CTkLabel(
+            send_row,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            anchor="w"
+        )
+        self.feedback_status_lbl.pack(side="left", padx=12)
         
         # Danger Zone / Clear Data Card
         reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
@@ -1862,19 +1889,58 @@ class TrackerDashboard(ctk.CTk):
                             self.on_notify(msg, title)
 
     def _send_feedback(self):
-        """Open the default email client with feedback pre-filled."""
-        import urllib.parse
-        import webbrowser
+        """Send feedback directly via Web3Forms API in a background thread."""
+        import threading
         
+        name = self.feedback_name.get().strip() if self.feedback_name.get().strip() else "Anonymous"
         body = self.feedback_textbox.get("0.0", "end").strip()
-        if not body or body == "Type your feedback here...":
-            body = ""
         
-        mailto = "mailto:contact@wofstudioz.com?subject={}&body={}".format(
-            urllib.parse.quote("Time Tracker Feedback"),
-            urllib.parse.quote(body)
-        )
-        webbrowser.open(mailto)
+        if not body or body == "Type your feedback here...":
+            self.feedback_status_lbl.configure(text="Please type some feedback first.", text_color="#f87171")
+            return
+        
+        # Disable button state while sending
+        self.feedback_status_lbl.configure(text="Sending...", text_color=THEME['text_secondary'])
+        self.update_idletasks()
+        
+        def _do_send():
+            import urllib.request
+            import json as _json
+            
+            payload = _json.dumps({
+                "access_key": "b5a3b32f-ab89-46bb-85e6-a20ae11bc230",
+                "subject": "Time Tracker Feedback",
+                "from_name": name,
+                "name": name,
+                "message": body
+            }).encode("utf-8")
+            
+            req = urllib.request.Request(
+                "https://api.web3forms.com/submit",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                method="POST"
+            )
+            
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    result = _json.loads(resp.read().decode())
+                    if result.get("success"):
+                        self.after(0, lambda: self.feedback_status_lbl.configure(
+                            text="Feedback sent! Thank you.", text_color="#10b981"))
+                        self.after(0, lambda: self.feedback_textbox.delete("0.0", "end"))
+                        self.after(0, lambda: self.feedback_name.delete(0, "end"))
+                    else:
+                        self.after(0, lambda: self.feedback_status_lbl.configure(
+                            text="Failed to send. Please try again.", text_color="#f87171"))
+            except Exception as e:
+                self.after(0, lambda: self.feedback_status_lbl.configure(
+                    text=f"Error: {e}", text_color="#f87171"))
+        
+        threading.Thread(target=_do_send, daemon=True).start()
 
     def _force_quit_app(self):
         """Immediately force-terminate the application and all threads."""
