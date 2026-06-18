@@ -43,8 +43,18 @@ def main():
     # Initialize components
     tracker = WindowTracker(db_path)
     
+    # Define notification callback (resolves tray dynamically from outer scope)
+    def notify_user(message, title="Time Tracker"):
+        try:
+            if 'tray' in locals() and tray and tray.icon:
+                tray.icon.notify(message, title)
+            else:
+                print(f"[Notification] {title}: {message}")
+        except Exception as e:
+            print(f"[Main] Notification error: {e}")
+
     # Initialize the dashboard UI (running on the main thread)
-    app = TrackerDashboard(db_path, tracker=tracker)
+    app = TrackerDashboard(db_path, tracker=tracker, on_notify=notify_user)
     
     # Withdraw the window immediately so that the app starts quietly in the system tray
     app.withdraw()

@@ -333,3 +333,15 @@ def get_last_7_days_totals(db_path):
         return [dict(row) for row in rows]
     finally:
         conn.close()
+
+def get_category_goal(db_path, category):
+    """Retrieve the daily goal limit for a category in seconds. Returns 0 if no goal is set."""
+    val = get_setting(db_path, f"goal_{category}", "0")
+    try:
+        return int(val)
+    except ValueError:
+        return 0
+
+def set_category_goal(db_path, category, seconds):
+    """Save the daily goal limit for a category in seconds."""
+    set_setting(db_path, f"goal_{category}", str(seconds))

@@ -422,11 +422,154 @@ class MonthlyCalendarWindow(ctk.CTkToplevel):
                     )
                     dur_lbl.pack(anchor="se", padx=6, pady=(5, 4))
 
+class DonutChart(tk.Canvas):
+    """A native Tkinter Canvas widget that draws a premium, beautiful donut chart for categories."""
+    def __init__(self, master, data, colors, **kwargs):
+        # Default canvas settings to match the dark aesthetic
+        kwargs.setdefault('bg', '#1e293b')
+        kwargs.setdefault('highlightthickness', 0)
+        super().__init__(master, **kwargs)
+        self.data = data # Dictionary: {category: seconds}
+        self.colors = colors # Dictionary: {category: hex_color}
+        self.bind("<Configure>", self.on_resize)
+        
+    def on_resize(self, event):
+        self.draw()
+        
+    def draw(self):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 10 or h < 10:
+            return
+            
+        cx = w / 2
+        cy = h / 2
+        radius = min(w, h) * 0.4
+        inner_radius = radius * 0.6
+        
+        # Calculate total duration
+        total = sum(self.data.values())
+        
+        if total == 0:
+            # Draw an empty slate grey ring if no data is tracked
+            self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill="#334155", outline="")
+            self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill="#1e293b", outline="")
+            self.create_text(cx, cy, text="No Tracking\nData", font=("Segoe UI", 12, "bold"), fill="#94a3b8", justify="center")
+            return
+            
+        start_angle = 90
+        # Draw arcs for each category
+        for cat, value in self.data.items():
+            if value <= 0:
+                continue
+            extent = (value / total) * 360
+            color = self.colors.get(cat, '#64748b')
+            # create_arc draws slice
+            self.create_arc(cx - radius, cy - radius, cx + radius, cy + radius,
+                             start=start_angle, extent=extent, fill=color, outline="", style="pieslice")
+            start_angle += extent
+            
+        # Draw center circle to hollow out the pie chart into a donut
+        self.create_oval(cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius, fill="#1e293b", outline="")
+        
+        # Draw center text (Total screen time)
+        total_str = format_duration(total)
+        self.create_text(cx, cy - 8, text="TOTAL TIME", font=("Segoe UI", 8, "bold"), fill="#94a3b8")
+        self.create_text(cx, cy + 10, text=total_str, font=("Segoe UI", 14, "bold"), fill="#f8fafc")
+
+class BarChart(tk.Canvas):
+    """A native Tkinter Canvas widget that draws a clean weekly bar chart."""
+    def __init__(self, master, data, bar_color="#3b82f6", **kwargs):
+        kwargs.setdefault('bg', '#1e293b')
+        kwargs.setdefault('highlightthickness', 0)
+        super().__init__(master, **kwargs)
+        self.data = data # List of dicts: [{'date': 'YYYY-MM-DD', 'duration': seconds}]
+        self.bar_color = bar_color
+        self.bind("<Configure>", self.on_resize)
+        
+    def on_resize(self, event):
+        self.draw()
+        
+    def draw(self):
+        self.delete("all")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 20 or h < 20:
+            return
+            
+        padding_top = 40
+        padding_bottom = 30
+        padding_left = 30
+        padding_right = 30
+        
+        plot_w = w - padding_left - padding_right
+        plot_h = h - padding_top - padding_bottom
+        
+        if not self.data:
+            self.create_text(w / 2, h / 2, text="No weekly data available yet.", font=("Segoe UI", 12, "bold"), fill="#64748b")
+            return
+            
+        max_duration = max(day['duration'] for day in self.data)
+        if max_duration <= 0:
+            max_duration = 3600 # Fallback 1 hour limit to avoid divide by zero
+            
+        num_bars = len(self.data)
+        bar_gap = 16
+        total_gaps_w = bar_gap * (num_bars - 1)
+        bar_w = (plot_w - total_gaps_w) / num_bars
+        if bar_w < 5:
+            bar_w = 5
+            
+        for i, item in enumerate(self.data):
+            date_str = item['date']
+            dur = item['duration']
+            
+            # Format label: day name
+            try:
+                dt = datetime.date.fromisoformat(date_str)
+                day_label = dt.strftime("%a") # e.g. "Mon"
+            except Exception:
+                day_label = date_str[-5:] # fallback to MM-DD
+                
+            # Calculate coordinates
+            bx1 = padding_left + i * (bar_w + bar_gap)
+            bx2 = bx1 + bar_w
+            
+            # Calculate height scale
+            bar_h = (dur / max_duration) * plot_h
+            by1 = h - padding_bottom - bar_h
+            by2 = h - padding_bottom
+            
+            # Draw bar
+            self.create_rectangle(bx1, by1, bx2, by2, fill=self.bar_color, outline="", width=0)
+            
+            # Top duration label
+            dur_str = format_duration(dur)
+            self.create_text((bx1 + bx2) / 2, by1 - 12, text=dur_str, font=("Segoe UI", 9, "bold"), fill="#f8fafc")
+            
+            # Bottom day label
+            self.create_text((bx1 + bx2) / 2, h - 15, text=day_label, font=("Segoe UI", 10, "bold"), fill="#94a3b8")
+            
+        # Draw bottom baseline
+        self.create_line(padding_left, h - padding_bottom, w - padding_right, h - padding_bottom, fill="#334155", width=2)
+
 class TrackerDashboard(ctk.CTk):
-    def __init__(self, db_path, tracker=None):
+    def __init__(self, db_path, tracker=None, on_notify=None):
         super().__init__()
         self.db_path = db_path
         self.tracker = tracker
+        self.on_notify = on_notify
+        
+        # Goals tracking state
+        self.fired_alerts = set()
+        self.last_alert_date = datetime.date.today().isoformat()
+        
+        # Pomodoro Timer State
+        self.pomo_seconds_left = 1500  # 25 minutes
+        self.pomo_state = "idle"       # "idle", "running", "paused"
+        self.pomo_mode = "focus"       # "focus", "break"
+        self.pomo_job = None
         
         # Window setup
         self.title("Windows Time Tracker")
@@ -453,7 +596,7 @@ class TrackerDashboard(ctk.CTk):
         self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color="#0f172a")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_propagate(False) # Prevent grid geometry resizing from collapsing the sidebar
-        self.sidebar_frame.grid_rowconfigure(4, weight=1) # Spacer
+        self.sidebar_frame.grid_rowconfigure(5, weight=1) # Spacer row
         
         # Logo / Title
         self.logo_label = ctk.CTkLabel(
@@ -503,7 +646,7 @@ class TrackerDashboard(ctk.CTk):
             text_color="#f8fafc"
         )
         self.avg_time_label.pack(padx=15, pady=(2, 10))
-
+ 
         # Manual Refresh Button
         self.refresh_btn = ctk.CTkButton(
             self.sidebar_frame,
@@ -516,6 +659,62 @@ class TrackerDashboard(ctk.CTk):
         )
         self.refresh_btn.grid(row=3, column=0, padx=15, pady=15, sticky="ew")
         
+        # Card 3: Pomodoro Timer Card
+        self.pomo_card = ctk.CTkFrame(self.sidebar_frame, fg_color="#1e293b", corner_radius=8, border_width=1, border_color="#334155")
+        self.pomo_card.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
+        
+        self.pomo_title = ctk.CTkLabel(
+            self.pomo_card, 
+            text="⏱️ POMODORO TIMER", 
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color="#3b82f6"
+        )
+        self.pomo_title.pack(padx=10, pady=(8, 2))
+        
+        self.pomo_mode_label = ctk.CTkLabel(
+            self.pomo_card,
+            text="Focus Mode",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#10b981"
+        )
+        self.pomo_mode_label.pack(padx=10)
+        
+        self.pomo_time_label = ctk.CTkLabel(
+            self.pomo_card,
+            text="25:00",
+            font=ctk.CTkFont(family="Consolas", size=22, weight="bold"),
+            text_color="#f8fafc"
+        )
+        self.pomo_time_label.pack(padx=10, pady=2)
+        
+        # Pomodoro Control Buttons Frame
+        pomo_btn_frame = ctk.CTkFrame(self.pomo_card, fg_color="transparent")
+        pomo_btn_frame.pack(padx=10, pady=(2, 8))
+        
+        self.pomo_start_btn = ctk.CTkButton(
+            pomo_btn_frame,
+            text="▶ Start",
+            command=self._toggle_pomodoro,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            width=70,
+            height=26,
+            fg_color="#10b981",
+            hover_color="#059669"
+        )
+        self.pomo_start_btn.pack(side="left", padx=3)
+        
+        self.pomo_reset_btn = ctk.CTkButton(
+            pomo_btn_frame,
+            text="🔄 Reset",
+            command=self._reset_pomodoro,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            width=70,
+            height=26,
+            fg_color="#475569",
+            hover_color="#334155"
+        )
+        self.pomo_reset_btn.pack(side="left", padx=3)
+        
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
@@ -523,7 +722,7 @@ class TrackerDashboard(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color="#64748b"
         )
-        self.footer_label.grid(row=5, column=0, padx=20, pady=20, sticky="s")
+        self.footer_label.grid(row=6, column=0, padx=20, pady=20, sticky="s")
 
     def _setup_main_panel(self):
         """Create right side panel with tabs and data lists. Uses tk.Frame for maximum resize performance."""
@@ -536,7 +735,7 @@ class TrackerDashboard(ctk.CTk):
         # View switcher
         self.view_selector = ctk.CTkSegmentedButton(
             self.main_frame,
-            values=["App Breakdown", "Browser Highlights", "History & Reports", "Settings"],
+            values=["App Breakdown", "Analytics", "Browser Highlights", "History & Reports", "Settings"],
             command=self._switch_view,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             selected_color="#3b82f6",
@@ -549,6 +748,9 @@ class TrackerDashboard(ctk.CTk):
         # Scrollable container for Apps Breakdown
         self.apps_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         self.apps_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        
+        # Scrollable container for Analytics
+        self.analytics_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         
         # Scrollable container for Browser Highlights
         self.browser_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
@@ -566,12 +768,16 @@ class TrackerDashboard(ctk.CTk):
     def _switch_view(self, value):
         """Toggle frame visibility based on selected tab."""
         self.apps_scroll.grid_forget()
+        self.analytics_scroll.grid_forget()
         self.browser_scroll.grid_forget()
         self.history_scroll.grid_forget()
         self.settings_scroll.grid_forget()
         
         if value == "App Breakdown":
             self.apps_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+            self.refresh_data()
+        elif value == "Analytics":
+            self.analytics_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
             self.refresh_data()
         elif value == "Browser Highlights":
             self.browser_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
@@ -699,6 +905,102 @@ class TrackerDashboard(ctk.CTk):
             hover_color="#475569"
         )
         browse_btn.pack(side="right", padx=15, pady=15)
+        
+        # Section: Daily Goals Card
+        goals_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
+        goals_card.pack(fill="x", padx=10, pady=5)
+        
+        goals_info_frame = ctk.CTkFrame(goals_card, fg_color="transparent")
+        goals_info_frame.pack(fill="x", padx=15, pady=10)
+        
+        goals_title = ctk.CTkLabel(
+            goals_info_frame,
+            text="🎯 Daily Screen Time Targets & Limits",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            anchor="w"
+        )
+        goals_title.pack(fill="x", pady=(5, 2))
+        
+        goals_desc = ctk.CTkLabel(
+            goals_info_frame,
+            text="Set minimum targets (Productivity) or maximum limits (Entertainment, Distraction). Set to 0h 0m to disable.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color="#94a3b8",
+            anchor="w"
+        )
+        goals_desc.pack(fill="x", pady=(0, 15))
+        
+        # Grid for options
+        grid_goals = tk.Frame(goals_info_frame, bg="#1e293b")
+        grid_goals.pack(fill="x", pady=5)
+        
+        hours_values = [str(x) for x in range(13)]
+        minutes_values = [str(x) for x in range(0, 60, 5)]
+        
+        # Helper to render a goal row
+        def create_goal_row(master, row_idx, cat_name, color, label_text):
+            lbl = ctk.CTkLabel(master, text=label_text, font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=color, anchor="w", fg_color="#1e293b")
+            lbl.grid(row=row_idx, column=0, padx=10, pady=6, sticky="w")
+            
+            goal_sec = database.get_category_goal(self.db_path, cat_name)
+            curr_h = str(goal_sec // 3600)
+            curr_m = str((goal_sec % 3600) // 60)
+            # Ensure minutes matches the 5-min steps (round to nearest)
+            curr_m_int = int(curr_m)
+            curr_m_int = 5 * round(curr_m_int / 5)
+            if curr_m_int >= 60:
+                curr_m_int = 55
+            curr_m = str(curr_m_int)
+            
+            h_menu = ctk.CTkOptionMenu(
+                master, values=hours_values, width=80, font=ctk.CTkFont(family="Segoe UI", size=11),
+                fg_color="#334155", button_color="#475569", button_hover_color="#64748b"
+            )
+            h_menu.set(curr_h)
+            h_menu.grid(row=row_idx, column=1, padx=5, pady=6)
+            
+            lbl_h = ctk.CTkLabel(master, text="h", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color="#1e293b")
+            lbl_h.grid(row=row_idx, column=2, padx=(0, 15), pady=6)
+            
+            m_menu = ctk.CTkOptionMenu(
+                master, values=minutes_values, width=80, font=ctk.CTkFont(family="Segoe UI", size=11),
+                fg_color="#334155", button_color="#475569", button_hover_color="#64748b"
+            )
+            m_menu.set(curr_m)
+            m_menu.grid(row=row_idx, column=3, padx=5, pady=6)
+            
+            lbl_m = ctk.CTkLabel(master, text="m", font=ctk.CTkFont(family="Segoe UI", size=12), fg_color="#1e293b")
+            lbl_m.grid(row=row_idx, column=4, padx=0, pady=6)
+            
+            return h_menu, m_menu
+
+        self.p_h, self.p_m = create_goal_row(grid_goals, 0, "Productivity", CATEGORY_COLORS["Productivity"], "🟢 Productivity Target:")
+        self.e_h, self.e_m = create_goal_row(grid_goals, 1, "Entertainment", CATEGORY_COLORS["Entertainment"], "🔵 Entertainment Limit:")
+        self.d_h, self.d_m = create_goal_row(grid_goals, 2, "Distraction", CATEGORY_COLORS["Distraction"], "🔴 Distraction Limit:")
+        
+        # Save Goals Button & Status
+        btn_frame = tk.Frame(goals_info_frame, bg="#1e293b")
+        btn_frame.pack(fill="x", pady=(15, 5))
+        
+        save_goals_btn = ctk.CTkButton(
+            btn_frame,
+            text="Save Daily Goals",
+            command=self._save_goals,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=140,
+            fg_color="#3b82f6",
+            hover_color="#2563eb"
+        )
+        save_goals_btn.pack(side="left")
+        
+        self.goals_status_lbl = ctk.CTkLabel(
+            btn_frame,
+            text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            anchor="w",
+            fg_color="#1e293b"
+        )
+        self.goals_status_lbl.pack(side="left", padx=15)
         
         # Section: Quick-Add Application Category Card
         quick_add_card = ctk.CTkFrame(self.settings_scroll, fg_color="#1e293b", corner_radius=8)
@@ -967,6 +1269,62 @@ class TrackerDashboard(ctk.CTk):
         """Open interactive monthly calendar pop-up modal."""
         print("[UI] Opening interactive monthly calendar pop-up modal...")
         MonthlyCalendarWindow(self, self.db_path)
+
+    def build_analytics_tab(self):
+        """Construct the Analytics layout showing category donut chart and weekly bar chart."""
+        for widget in self.analytics_scroll.winfo_children():
+            widget.destroy()
+            
+        title_analytics = ctk.CTkLabel(
+            self.analytics_scroll,
+            text="📊 Visual Analytics & Trends",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            anchor="w",
+            text_color="#3b82f6"
+        )
+        title_analytics.pack(fill="x", padx=10, pady=(15, 10))
+        
+        # Horizontal Split Panel using standard frame
+        split_frame = tk.Frame(self.analytics_scroll, bg="#020617")
+        split_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Left Panel (Donut Chart)
+        left_card = ctk.CTkFrame(split_frame, fg_color="#1e293b", corner_radius=10, border_width=1, border_color="#334155")
+        left_card.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        
+        lbl_donut = ctk.CTkLabel(
+            left_card,
+            text="Today's Category Breakdown",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color="#f8fafc"
+        )
+        lbl_donut.pack(pady=(12, 5))
+        
+        today = datetime.date.today().isoformat()
+        cat_durations = database.get_category_durations(self.db_path, today)
+        
+        # Instantiate DonutChart
+        donut = DonutChart(left_card, cat_durations, CATEGORY_COLORS, width=280, height=280)
+        donut.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Right Panel (Weekly Bar Chart)
+        right_card = ctk.CTkFrame(split_frame, fg_color="#1e293b", corner_radius=10, border_width=1, border_color="#334155")
+        right_card.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+        
+        lbl_bar = ctk.CTkLabel(
+            right_card,
+            text="Weekly Screen Time Trend",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color="#f8fafc"
+        )
+        lbl_bar.pack(pady=(12, 5))
+        
+        # Fetch weekly history totals
+        weekly_totals = database.get_last_7_days_totals(self.db_path)
+        
+        # Instantiate BarChart
+        barchart = BarChart(right_card, weekly_totals, bar_color="#3b82f6", width=380, height=280)
+        barchart.pack(padx=20, pady=10, fill="both", expand=True)
 
     def build_history_tab(self):
         """Construct the History and Reports layout including weekly averages and monthly top apps."""
@@ -1239,8 +1597,38 @@ class TrackerDashboard(ctk.CTk):
                 lbl.pack(pady=40)
                 self.rendered_browser_rows.append(lbl)
 
+        elif active_tab == "Analytics":
+            self.build_analytics_tab()
+
         elif active_tab == "History & Reports":
             self.build_history_tab()
+
+        # 3. Check Screen Time Goals / Alerts
+        current_date = datetime.date.today().isoformat()
+        if current_date != self.last_alert_date:
+            self.fired_alerts.clear()
+            self.last_alert_date = current_date
+            
+        for category in ['Productivity', 'Entertainment', 'Distraction']:
+            goal_sec = database.get_category_goal(self.db_path, category)
+            if goal_sec > 0 and category not in self.fired_alerts:
+                cat_durations = database.get_category_durations(self.db_path, current_date)
+                actual_sec = cat_durations.get(category, 0)
+                
+                if category in ('Entertainment', 'Distraction'):
+                    if actual_sec >= goal_sec:
+                        self.fired_alerts.add(category)
+                        msg = f"You have reached your daily limit of {format_duration(goal_sec)} for {category}!"
+                        title = "Limit Exceeded!"
+                        if self.on_notify:
+                            self.on_notify(msg, title)
+                elif category == 'Productivity':
+                    if actual_sec >= goal_sec:
+                        self.fired_alerts.add(category)
+                        msg = f"Congratulations! You reached your daily productivity target of {format_duration(goal_sec)}!"
+                        title = "Target Reached!"
+                        if self.on_notify:
+                            self.on_notify(msg, title)
 
     def schedule_refresh(self):
         """Schedule the refresh method to execute every 5 seconds."""
@@ -1282,3 +1670,99 @@ class TrackerDashboard(ctk.CTk):
             
         # Re-render Settings tab to show the new app in its list
         self.build_settings_tab()
+
+    def _toggle_pomodoro(self):
+        """Start or pause the Pomodoro timer."""
+        if self.pomo_state == "idle" or self.pomo_state == "paused":
+            self.pomo_state = "running"
+            self.pomo_start_btn.configure(text="⏸ Pause", fg_color="#ef4444", hover_color="#dc2626")
+            self._tick_pomodoro()
+        elif self.pomo_state == "running":
+            self.pomo_state = "paused"
+            self.pomo_start_btn.configure(text="▶ Resume", fg_color="#10b981", hover_color="#059669")
+            if self.pomo_job:
+                self.after_cancel(self.pomo_job)
+                self.pomo_job = None
+
+    def _reset_pomodoro(self):
+        """Reset the Pomodoro timer back to default settings."""
+        if self.pomo_job:
+            self.after_cancel(self.pomo_job)
+            self.pomo_job = None
+            
+        self.pomo_state = "idle"
+        self.pomo_mode = "focus"
+        self.pomo_seconds_left = 1500 # 25 minutes
+        
+        self.pomo_mode_label.configure(text="Focus Mode", text_color="#10b981")
+        self.pomo_time_label.configure(text="25:00")
+        self.pomo_start_btn.configure(text="▶ Start", fg_color="#10b981", hover_color="#059669")
+
+    def _tick_pomodoro(self):
+        """Countdown one second and transition if timer runs out."""
+        if self.pomo_state != "running":
+            return
+            
+        if self.pomo_seconds_left > 0:
+            self.pomo_seconds_left -= 1
+            mins = self.pomo_seconds_left // 60
+            secs = self.pomo_seconds_left % 60
+            self.pomo_time_label.configure(text=f"{mins:02d}:{secs:02d}")
+            self.pomo_job = self.after(1000, self._tick_pomodoro)
+        else:
+            # Timer completed!
+            self.pomo_state = "idle"
+            
+            # Sound beep alert (native Windows sound)
+            try:
+                import winsound
+                winsound.Beep(440, 600)
+            except Exception:
+                pass
+                
+            # Trigger notification callback
+            if self.pomo_mode == "focus":
+                msg = "Great job! Focus session complete. Time for a short break!"
+                title = "Focus Complete!"
+                # Set up break mode (5 minutes)
+                self.pomo_mode = "break"
+                self.pomo_seconds_left = 300
+                self.pomo_mode_label.configure(text="Break Mode", text_color="#3b82f6")
+                self.pomo_time_label.configure(text="05:00")
+            else:
+                msg = "Break is over! Time to get back to work."
+                title = "Break Ended!"
+                # Set up focus mode (25 minutes)
+                self.pomo_mode = "focus"
+                self.pomo_seconds_left = 1500
+                self.pomo_mode_label.configure(text="Focus Mode", text_color="#10b981")
+                self.pomo_time_label.configure(text="25:00")
+                
+            # Send notification via callback if registered
+            if self.on_notify:
+                self.on_notify(msg, title)
+                
+            self.pomo_start_btn.configure(text="▶ Start", fg_color="#10b981", hover_color="#059669")
+
+    def _save_goals(self):
+        """Save the hours and minutes settings for categories back to database."""
+        try:
+            p_sec = int(self.p_h.get()) * 3600 + int(self.p_m.get()) * 60
+            e_sec = int(self.e_h.get()) * 3600 + int(self.e_m.get()) * 60
+            d_sec = int(self.d_h.get()) * 3600 + int(self.d_m.get()) * 60
+            
+            # Write to DB
+            database.set_category_goal(self.db_path, "Productivity", p_sec)
+            database.set_category_goal(self.db_path, "Entertainment", e_sec)
+            database.set_category_goal(self.db_path, "Distraction", d_sec)
+            
+            # Clear alerts for updated goals so they can trigger if they are now exceeded
+            self.fired_alerts.discard("Productivity")
+            self.fired_alerts.discard("Entertainment")
+            self.fired_alerts.discard("Distraction")
+            
+            self.goals_status_lbl.configure(text="✅ Daily goals updated successfully!", text_color="#10b981")
+            # Clear status message after 3 seconds
+            self.after(3000, lambda: self.goals_status_lbl.configure(text=""))
+        except Exception as e:
+            self.goals_status_lbl.configure(text=f"❌ Error updating goals: {e}", text_color="#ef4444")
