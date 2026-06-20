@@ -44,7 +44,7 @@ def main():
     tracker = WindowTracker(db_path)
     
     # Define notification callback (resolves tray dynamically from outer scope)
-    def notify_user(message, title="Time Tracker"):
+    def notify_user(message, title="WofstudioZ Time Tracker"):
         try:
             if 'tray' in locals() and tray and tray.icon:
                 tray.icon.notify(message, title)

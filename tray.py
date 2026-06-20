@@ -87,7 +87,7 @@ class SystemTrayApp:
         self.icon = pystray.Icon(
             "TimeTrackerIcon",
             create_tray_icon_image(),
-            "Time Tracker",
+            "WofstudioZ Time Tracker",
             menu=menu
         )
         

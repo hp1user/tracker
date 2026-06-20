@@ -624,7 +624,7 @@ class TrackerDashboard(ctk.CTk):
         self.last_alert_date = datetime.date.today().isoformat()
         
         # Window setup
-        self.title("Windows Time Tracker")
+        self.title("WofstudioZ Time Tracker")
         self.geometry("950x650")
         self.minsize(850, 550)
         self.configure(fg_color=THEME['bg_main'])
@@ -741,7 +741,7 @@ class TrackerDashboard(ctk.CTk):
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
-            text="Local Time Tracker v1.0.1", 
+            text="WofstudioZ Time Tracker v1.0.1", 
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=THEME['text_muted']
         )
