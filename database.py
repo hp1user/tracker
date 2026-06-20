@@ -121,7 +121,7 @@ def get_browser_highlights(db_path, date_str):
     Return platform-specific highlights for browser usage.
     Looks for major platforms (YouTube, GitHub, etc.) inside browser window titles.
     """
-    browser_exes = ('chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe')
+    browser_exes = ('chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe', 'operagx.exe', 'vivaldi.exe', 'arc.exe')
     conn = get_db_connection(db_path)
     try:
         query = f"""

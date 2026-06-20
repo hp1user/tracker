@@ -168,10 +168,24 @@ class CategorySettingsRow(tk.Frame):
         )
         self.name_label.pack(side="left", padx=10, fill="x", expand=True)
         
-        # Category Selector Dropdown (includes Untracked option)
+        # Remove button
+        self.remove_btn = ctk.CTkButton(
+            self,
+            text="Remove",
+            command=self._on_remove_click,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            width=65,
+            height=28,
+            fg_color="#7f1d1d",
+            hover_color="#991b1b",
+            text_color="#fca5a5"
+        )
+        self.remove_btn.pack(side="right", padx=10, pady=8)
+        
+        # Category Selector Dropdown (excludes Uncategorized option as we have dedicated Remove button)
         self.cat_menu = ctk.CTkOptionMenu(
             self,
-            values=["Productivity", "Entertainment", "Distraction", "Untracked", "Uncategorized"],
+            values=["Productivity", "Entertainment", "Distraction", "Untracked"],
             command=self._on_changed,
             font=ctk.CTkFont(family="Segoe UI", size=11),
             width=120,
@@ -184,10 +198,21 @@ class CategorySettingsRow(tk.Frame):
             dropdown_hover_color=THEME['btn_hover']
         )
         self.cat_menu.set(current_category)
-        self.cat_menu.pack(side="right", padx=10, pady=8)
+        self.cat_menu.pack(side="right", padx=(0, 5), pady=8)
 
     def _on_changed(self, choice):
         self.on_change_callback(self.exe_name, choice)
+
+    def _on_remove_click(self):
+        from tkinter import messagebox
+        confirm = messagebox.askyesno(
+            "Remove Application",
+            f"Are you sure you want to remove '{self.exe_name}' from the tracked applications list?\n\n"
+            "This will stop tracking the application and remove it from the dashboard, but all past recorded time will remain in the database.",
+            icon="warning"
+        )
+        if confirm:
+            self.on_change_callback(self.exe_name, "Uncategorized")
 
 class WeeklyCalendarWindow(ctk.CTkToplevel):
     """Popup window showing daily totals for the last 7 calendar days."""
@@ -1262,7 +1287,7 @@ class TrackerDashboard(ctk.CTk):
         
         self.add_cat_menu = ctk.CTkOptionMenu(
             controls_frame,
-            values=["Productivity", "Entertainment", "Distraction", "Untracked", "Uncategorized"],
+            values=["Productivity", "Entertainment", "Distraction", "Untracked"],
             font=ctk.CTkFont(family="Segoe UI", size=11),
             width=130,
             fg_color=THEME['btn_bg'],
