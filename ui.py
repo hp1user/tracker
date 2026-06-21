@@ -911,7 +911,7 @@ class TrackerDashboard(ctk.CTk):
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
-            text="WofstudioZ Time Tracker v1.0.2", 
+            text="WofstudioZ Time Tracker v1.0.3", 
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=THEME['text_muted']
         )
@@ -1135,7 +1135,7 @@ class TrackerDashboard(ctk.CTk):
         
         update_desc = ctk.CTkLabel(
             update_info_frame,
-            text="Current version: v1.0.2. Check for new updates on GitHub.",
+            text="Current version: v1.0.3. Check for new updates on GitHub.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=THEME['text_secondary'],
             anchor="w"
@@ -2133,7 +2133,7 @@ class TrackerDashboard(ctk.CTk):
         import webbrowser
         import tkinter.messagebox as messagebox
         
-        current_version = "v1.0.2"
+        current_version = "v1.0.3"
         url = "https://api.github.com/repos/hp1user/tracker/releases/latest"
         req = urllib.request.Request(
             url, 
@@ -2141,7 +2141,7 @@ class TrackerDashboard(ctk.CTk):
         )
         
         def parse_version(v):
-            """Parse 'v1.0.2' into comparable tuple (1, 0, 2)."""
+            """Parse 'v1.0.3' into comparable tuple (1, 0, 3)."""
             try:
                 return tuple(int(x) for x in v.lstrip("v").split("."))
             except Exception:
@@ -2178,7 +2178,12 @@ class TrackerDashboard(ctk.CTk):
                                 daemon=True
                             ).start()
                         else:
-                            # Running as script or no asset found - open browser
+                            # Running as script or no asset found - show info and open browser
+                            messagebox.showinfo(
+                                "Redirecting to GitHub",
+                                "Auto-update is only supported for the compiled standalone version (TimeTracker.exe).\n\n"
+                                "Opening the GitHub release page to download it manually."
+                            )
                             webbrowser.open(release_url)
                 elif not quiet:
                     messagebox.showinfo("Up to Date", f"You are running the latest version ({current_version}).")
@@ -2210,15 +2215,21 @@ class TrackerDashboard(ctk.CTk):
                     f.write(resp.read())
 
             # Write a batch script that:
-            # 1. Waits for this process to exit
+            # 1. Waits for this process to exit (using a robust retry loop with ping-based delay)
             # 2. Copies new EXE over old EXE
             # 3. Restarts the app
             # 4. Deletes itself
             bat_path = os.path.join(temp_dir, "timetracker_updater.bat")
             bat_content = (
                 "@echo off\n"
-                "timeout /t 2 /nobreak > NUL\n"
+                "set count=1\n"
+                ":loop\n"
+                "ping 127.0.0.1 -n 2 > NUL\n"
                 f"copy /y \"{new_exe_path}\" \"{current_exe_path}\"\n"
+                "if not errorlevel 1 goto success\n"
+                "set /a count=%count%+1\n"
+                "if %count% lss 10 goto loop\n"
+                ":success\n"
                 f"start \"\" \"{current_exe_path}\"\n"
                 f"del \"{new_exe_path}\"\n"
                 "del \"%~f0\"\n"

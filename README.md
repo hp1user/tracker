@@ -1,4 +1,4 @@
-# ⏱️ Windows Time Tracker (v1.0.2)
+# ⏱️ Windows Time Tracker (v1.0.3)
 
 A premium, local-only, and privacy-first time tracking application for Windows. It runs quietly in the system tray, monitors active applications, filters out system idle time, and presents detailed productivity metrics in a sleek, lag-free dark mode dashboard.
 

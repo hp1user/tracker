@@ -1,10 +1,46 @@
 import os
 import sys
 import json
+import ctypes
+from ctypes import wintypes
 import database
 from tracker import WindowTracker
 from tray import SystemTrayApp
 from ui import TrackerDashboard
+
+# Global reference to keep the mutex handle alive
+_mutex_handle = None
+
+def check_single_instance():
+    """Ensure that only one instance of the application runs at a time."""
+    global _mutex_handle
+    try:
+        CreateMutexW = ctypes.windll.kernel32.CreateMutexW
+        CreateMutexW.argtypes = [wintypes.LPCVOID, wintypes.BOOL, wintypes.LPCWSTR]
+        CreateMutexW.restype = wintypes.HANDLE
+
+        GetLastError = ctypes.windll.kernel32.GetLastError
+        GetLastError.argtypes = []
+        GetLastError.restype = wintypes.DWORD
+
+        mutex_name = "Local\\WofstudioZTimeTrackerMutex"
+        _mutex_handle = CreateMutexW(None, True, mutex_name)
+        last_error = GetLastError()
+
+        ERROR_ALREADY_EXISTS = 183
+        if last_error == ERROR_ALREADY_EXISTS:
+            # Show a message box indicating that the application is already running
+            ctypes.windll.user32.MessageBoxW(
+                0, 
+                "Time Tracker is already running.", 
+                "Time Tracker", 
+                0x40 | 0x0  # MB_ICONINFORMATION | MB_OK
+            )
+            return False
+    except Exception as e:
+        print(f"[Main] Error checking single instance: {e}")
+    return True
+
 
 def get_config_path():
     """Resolve the configuration file path inside Local AppData."""
@@ -33,6 +69,9 @@ def load_db_folder():
     return default_folder
 
 def main():
+    if not check_single_instance():
+        sys.exit(0)
+
     db_folder = load_db_folder()
     os.makedirs(db_folder, exist_ok=True)
     db_path = os.path.join(db_folder, "tracker.db")
