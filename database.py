@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 
 def get_db_connection(db_path):
     """Establish and return a connection to the SQLite database."""
@@ -46,6 +47,15 @@ def init_db(db_path):
                     category TEXT NOT NULL
                 )
             """)
+            
+            # Check if track_details column exists in app_categories, and add if missing
+            cursor = conn.execute("PRAGMA table_info(app_categories)")
+            columns = [info[1] for info in cursor.fetchall()]
+            if "track_details" not in columns:
+                conn.execute("ALTER TABLE app_categories ADD COLUMN track_details INTEGER DEFAULT 0")
+                
+            # Migrate any existing "Unsaved" window titles to ""
+            migrate_unsaved_records(conn)
     finally:
         conn.close()
 
@@ -57,6 +67,15 @@ def save_usage(db_path, records):
     if not records:
         return
         
+    # Clean records: if the project name extracts to "Unsaved", save with empty window_title
+    cleaned_records = []
+    for date, exe, title, dur in records:
+        project = extract_project_name(exe, title)
+        if project == "Unsaved":
+            cleaned_records.append((date, exe, "", dur))
+        else:
+            cleaned_records.append((date, exe, title, dur))
+            
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -65,7 +84,7 @@ def save_usage(db_path, records):
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(date, exe_name, window_title)
                 DO UPDATE SET duration_seconds = duration_seconds + excluded.duration_seconds
-            """, records)
+            """, cleaned_records)
     finally:
         conn.close()
 
@@ -358,5 +377,215 @@ def clear_all_data(db_path):
             conn.execute("DELETE FROM settings")
             conn.execute("DELETE FROM app_categories")
             conn.execute("VACUUM")
+    finally:
+        conn.close()
+
+def get_track_details_map(db_path):
+    """Retrieve a dictionary mapping lowercase exe name to track_details (0 or 1)."""
+    conn = get_db_connection(db_path)
+    try:
+        rows = conn.execute("SELECT exe_name, track_details FROM app_categories").fetchall()
+        return {row['exe_name'].lower(): bool(row['track_details']) for row in rows}
+    except Exception as e:
+        print(f"[Database] Error in get_track_details_map: {e}")
+        return {}
+    finally:
+        conn.close()
+
+def set_app_track_details(db_path, exe_name, track_details):
+    """Enable or disable detailed project tracking for an executable."""
+    conn = get_db_connection(db_path)
+    try:
+        with conn:
+            conn.execute("""
+                UPDATE app_categories
+                SET track_details = ?
+                WHERE LOWER(exe_name) = LOWER(?)
+            """, (int(track_details), exe_name))
+    finally:
+        conn.close()
+
+def extract_unity_project(title):
+    if not title or title.strip() == "System/Background Process":
+        return "Unknown Project"
+    parts = [p.strip() for p in title.split(" - ") if p.strip()]
+    if len(parts) >= 2:
+        if "unity" in parts[0].lower():
+            return parts[1]
+        for part in parts:
+            if "unity" in part.lower():
+                return parts[0]
+        return parts[0]
+    return "Unknown Project"
+
+def extract_blender_project(title):
+    if not title or title.strip() == "System/Background Process":
+        return "New Project"
+    match = re.search(r'\[([^\]]+)\]', title)
+    if match:
+        path = match.group(1).strip()
+        filename = os.path.basename(path)
+        filename = filename.rstrip('*').strip()
+        if filename:
+            return filename
+    if " - Blender" in title:
+        parts = title.split(" - Blender")
+        if parts[0]:
+            return parts[0].rstrip('*').strip()
+    if title.strip().startswith("Blender"):
+        return "New Project"
+    return title.strip()
+
+def extract_maya_project(title):
+    if not title or title.strip() == "System/Background Process":
+        return "Untitled Scene"
+    
+    # 1. Check for suffix pattern: E.g., "C:\path\to\scene.mb* - Autodesk Maya 2024"
+    if " - Autodesk Maya" in title:
+        path_part = title.split(" - Autodesk Maya")[0].strip()
+        filename = os.path.basename(path_part)
+        filename = filename.rstrip('*').strip()
+        if filename:
+            return filename
+            
+    # 2. Check for prefix pattern: E.g., "Autodesk Maya 2024: C:\path\to\scene.mb"
+    if "autodesk maya" in title.lower():
+        parts = title.split(":")
+        if len(parts) >= 2:
+            path_part = ":".join(parts[1:]).strip()
+            if path_part.lower() == "untitled":
+                return "Untitled Scene"
+            filename = os.path.basename(path_part)
+            filename = filename.rstrip('*').strip()
+            if filename:
+                return filename
+                
+    return "Untitled Scene"
+
+def extract_substance_project(title):
+    if not title or title.strip() == "System/Background Process":
+        return "Untitled Project"
+    parts = title.split(" - ")
+    if len(parts) >= 2:
+        for part in parts:
+            p = part.strip()
+            if p.lower().endswith(".spp") or p.lower().endswith(".sbs") or p.lower().endswith(".sbsar") or p.lower().endswith(".spp*") or p.lower().endswith(".sbs*") or p.startswith("*"):
+                project = p.lstrip('*').strip()
+                if project:
+                    return project
+        project = parts[0].lstrip('*').strip()
+        if project:
+            return project
+    return "Untitled Project"
+
+def extract_general_project(title):
+    if not title or title.strip() == "System/Background Process":
+        return "General/Idle"
+    match = re.search(r'([a-zA-Z]:[\\/][^:*?"<>|\r\n]+)', title)
+    if match:
+        path = match.group(1).strip()
+        filename = os.path.basename(path)
+        filename = filename.split(" - ")[0].split(" : ")[0].strip()
+        filename = filename.rstrip('*').strip()
+        if filename:
+            return filename
+    parts = title.split(" - ")
+    if len(parts) >= 2:
+        return parts[0].strip()
+    return title.strip()
+
+def extract_project_name(exe_name, window_title):
+    exe_lower = exe_name.lower()
+    if 'unity.exe' in exe_lower:
+        project = extract_unity_project(window_title)
+    elif 'blender.exe' in exe_lower:
+        project = extract_blender_project(window_title)
+    elif 'maya.exe' in exe_lower:
+        project = extract_maya_project(window_title)
+    elif 'substance' in exe_lower:
+        project = project_name = extract_substance_project(window_title)
+    else:
+        project = extract_general_project(window_title)
+        
+    # Clean up project name (strip leading/trailing asterisks, brackets, and whitespace)
+    project = project.strip('* \t\r\n[]()')
+    
+    # Consolidate unsaved/untitled documents into a single unified label
+    proj_lower = project.lower()
+    if not project or any(word in proj_lower for word in ("unsaved", "untitled", "new project", "unknown project", "general/idle")):
+        return "Unsaved"
+        
+    return project
+
+def migrate_unsaved_records(conn):
+    """Migrate any existing database records where the project name parses to 'Unsaved' to have an empty window_title."""
+    cursor = conn.execute("SELECT id, date, exe_name, window_title, duration_seconds FROM app_usage")
+    rows = cursor.fetchall()
+    
+    needs_migration = False
+    for row in rows:
+        exe = row['exe_name']
+        title = row['window_title']
+        if title != "":
+            if extract_project_name(exe, title) == "Unsaved":
+                needs_migration = True
+                break
+                
+    if not needs_migration:
+        return
+        
+    print("[Database] Migrating existing 'Unsaved' window titles to empty strings...")
+    aggregated = {}
+    for row in rows:
+        date = row['date']
+        exe = row['exe_name']
+        title = row['window_title']
+        dur = row['duration_seconds']
+        
+        if extract_project_name(exe, title) == "Unsaved":
+            new_title = ""
+        else:
+            new_title = title
+            
+        key = (date, exe.lower(), new_title)
+        if key in aggregated:
+            aggregated[key]['duration'] += dur
+        else:
+            aggregated[key] = {
+                'date': date,
+                'exe_name': exe,
+                'window_title': new_title,
+                'duration': dur
+            }
+            
+    conn.execute("DELETE FROM app_usage")
+    conn.executemany("""
+        INSERT INTO app_usage (date, exe_name, window_title, duration_seconds)
+        VALUES (?, ?, ?, ?)
+    """, [(item['date'], item['exe_name'], item['window_title'], item['duration']) for item in aggregated.values()])
+    print(f"[Database] Migration complete. Consolidated into {len(aggregated)} rows.")
+
+def get_project_breakdown_for_app(db_path, date_str, exe_name):
+    """Retrieve durations grouped by parsed project/file names for a specific app on a given date."""
+    conn = get_db_connection(db_path)
+    try:
+        rows = conn.execute("""
+            SELECT window_title, duration_seconds
+            FROM app_usage
+            WHERE date = ? AND LOWER(exe_name) = LOWER(?)
+        """, (date_str, exe_name)).fetchall()
+        
+        project_durations = {}
+        for row in rows:
+            title = row['window_title']
+            dur = row['duration_seconds']
+            project = extract_project_name(exe_name, title)
+            if project == "Unsaved":
+                continue
+            project_durations[project] = project_durations.get(project, 0) + dur
+            
+        result = [{'project_name': p, 'duration': d} for p, d in project_durations.items()]
+        result.sort(key=lambda x: x['duration'], reverse=True)
+        return result
     finally:
         conn.close()

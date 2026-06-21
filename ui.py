@@ -100,23 +100,92 @@ def get_open_window_exes():
     filtered_exes = [name for name in exes if name not in excluded_defaults]
     return sorted(list(filtered_exes))
 
-class AppRow(tk.Frame):
-    """Custom compact row displaying application usage. Inherits from tk.Frame for maximum resize performance."""
-    def __init__(self, master, exe_name, duration, total_duration, max_duration, category, bg_color=None):
+class ProjectSubRow(tk.Frame):
+    """Custom compact row displaying a nested project's duration. Inherits from tk.Frame for speed."""
+    def __init__(self, master, project_name, duration, parent_duration, category, is_last=False, bg_color=None):
         bg_color = bg_color or THEME['bg_card']
         super().__init__(master, bg=bg_color)
         
-        # Calculate percentage relative to total day/period screen time
-        percentage_total = (duration / total_duration) * 100 if total_duration > 0 else 0
-        # Progress bar fill relative to the highest overall app for visual balance
-        bar_value = duration / max_duration if max_duration > 0 else 0
+        percentage_parent = (duration / parent_duration) * 100 if parent_duration > 0 else 0
+        bar_value = duration / parent_duration if parent_duration > 0 else 0
+        
+        # Indent icon or symbol
+        indent_char = " └─" if is_last else " ├─"
+        self.arrow_label = ctk.CTkLabel(
+            self,
+            text=indent_char,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=bg_color,
+            text_color=THEME['text_muted'],
+            width=20
+        )
+        self.arrow_label.pack(side="left", padx=(5, 2))
+        
+        self.name_label = ctk.CTkLabel(
+            self, 
+            text=project_name, 
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            anchor="w",
+            fg_color=bg_color,
+            text_color=THEME['text_primary']
+        )
+        self.name_label.pack(side="left", padx=2, fill="x", expand=True)
         
         bar_color = CATEGORY_COLORS.get(category, '#71717a')
+        self.progress_bar = ctk.CTkProgressBar(
+            self, 
+            orientation="horizontal", 
+            width=80, 
+            height=4, 
+            fg_color=THEME['bg_main'], 
+            progress_color=bar_color
+        )
+        self.progress_bar.set(bar_value)
+        self.progress_bar.pack(side="left", padx=5)
+        
+        info_text = f"{percentage_parent:.0f}% ({format_duration(duration)})"
+        self.info_label = ctk.CTkLabel(
+            self, 
+            text=info_text, 
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            anchor="e",
+            width=80,
+            fg_color=bg_color,
+            text_color=THEME['text_secondary']
+        )
+        self.info_label.pack(side="right", padx=(5, 5))
+
+class AppRow(tk.Frame):
+    """Custom compact row displaying application usage. Inherits from tk.Frame for maximum resize performance."""
+    def __init__(self, master, exe_name, duration, total_duration, max_duration, category, db_path=None, date_str=None, bg_color=None, dashboard=None, is_expandable=False):
+        bg_color = bg_color or THEME['bg_card']
+        super().__init__(master, bg=bg_color)
+        
+        self.exe_name = exe_name
+        self.duration = duration
+        self.category = category
+        self.db_path = db_path
+        self.date_str = date_str
+        self.bg_color = bg_color
+        self.dashboard = dashboard
+        self.is_expandable = is_expandable
+        self.is_expanded = False
+        
+        percentage_total = (duration / total_duration) * 100 if total_duration > 0 else 0
+        bar_value = duration / max_duration if max_duration > 0 else 0
+        bar_color = CATEGORY_COLORS.get(category, '#71717a')
+        
+        # Display name prepended with chevron arrow if expandable
+        display_name = f"▶  {exe_name}" if self.is_expandable else exe_name
+        
+        # Create a container frame for header to separate it from the sub-frame grid
+        self.main_row = tk.Frame(self, bg=bg_color)
+        self.main_row.pack(fill="x", expand=True)
         
         # Name label - takes remaining space, allows resizing
         self.name_label = ctk.CTkLabel(
-            self, 
-            text=exe_name, 
+            self.main_row, 
+            text=display_name, 
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             anchor="w",
             fg_color=bg_color,
@@ -124,13 +193,13 @@ class AppRow(tk.Frame):
         )
         self.name_label.pack(side="left", padx=(5, 5), fill="x", expand=True)
         
-        # Progress Bar - Set to fixed width to avoid Tkinter canvas redrawing lag during window resizes!
+        # Progress Bar - Set to fixed width to avoid Tkinter canvas redrawing lag during window resizes
         self.progress_bar = ctk.CTkProgressBar(
-            self, 
+            self.main_row, 
             orientation="horizontal", 
-            width=110, # Fixed width prevents dynamic redraw events
+            width=110, 
             height=8, 
-            fg_color=THEME['bg_main'], # Dark background for contrast
+            fg_color=THEME['bg_main'], 
             progress_color=bar_color
         )
         self.progress_bar.set(bar_value)
@@ -139,7 +208,7 @@ class AppRow(tk.Frame):
         # Info Label (compact percentage + duration)
         info_text = f"{percentage_total:.0f}% ({format_duration(duration)})"
         self.info_label = ctk.CTkLabel(
-            self, 
+            self.main_row, 
             text=info_text, 
             font=ctk.CTkFont(family="Segoe UI", size=10),
             anchor="e",
@@ -148,14 +217,89 @@ class AppRow(tk.Frame):
             text_color=THEME['text_secondary']
         )
         self.info_label.pack(side="right", padx=(5, 5))
+        
+        # Sub-frame container for project details list
+        self.sub_frame = tk.Frame(self, bg=bg_color)
+        
+        if self.is_expandable:
+            # Bind hover and click events
+            self.main_row.configure(cursor="hand2")
+            self.name_label.configure(cursor="hand2")
+            
+            self.main_row.bind("<Button-1>", lambda e: self.toggle_expand())
+            self.name_label.bind("<Button-1>", lambda e: self.toggle_expand())
+            
+            def on_enter(e):
+                self.main_row.configure(bg=THEME['btn_hover'])
+                self.name_label.configure(fg_color=THEME['btn_hover'])
+                self.info_label.configure(fg_color=THEME['btn_hover'])
+            def on_leave(e):
+                self.main_row.configure(bg=bg_color)
+                self.name_label.configure(fg_color=bg_color)
+                self.info_label.configure(fg_color=bg_color)
+                
+            self.main_row.bind("<Enter>", on_enter)
+            self.main_row.bind("<Leave>", on_leave)
+            self.name_label.bind("<Enter>", on_enter)
+            self.name_label.bind("<Leave>", on_leave)
+
+    def toggle_expand(self):
+        """Toggle project details expansion and update arrow indicator."""
+        self.is_expanded = not self.is_expanded
+        
+        if self.dashboard:
+            if self.is_expanded:
+                self.dashboard.expanded_apps.add(self.exe_name.lower())
+            else:
+                self.dashboard.expanded_apps.discard(self.exe_name.lower())
+                
+        if self.is_expanded:
+            self.name_label.configure(text=f"▼  {self.exe_name}")
+            self.load_sub_projects()
+        else:
+            self.name_label.configure(text=f"▶  {self.exe_name}")
+            self.sub_frame.pack_forget()
+
+    def load_sub_projects(self):
+        """Query and populate sub-project rows dynamically."""
+        for widget in self.sub_frame.winfo_children():
+            widget.destroy()
+            
+        projects = database.get_project_breakdown_for_app(self.db_path, self.date_str, self.exe_name)
+        if projects:
+            for idx, proj in enumerate(projects):
+                is_last = (idx == len(projects) - 1)
+                sub_row = ProjectSubRow(
+                    self.sub_frame,
+                    project_name=proj['project_name'],
+                    duration=proj['duration'],
+                    parent_duration=self.duration,
+                    category=self.category,
+                    is_last=is_last,
+                    bg_color=self.bg_color
+                )
+                sub_row.pack(fill="x", padx=(15, 0), pady=2)
+                
+            self.sub_frame.pack(fill="x", padx=0, pady=(2, 4))
+        else:
+            lbl = ctk.CTkLabel(
+                self.sub_frame,
+                text="   No project details found",
+                font=ctk.CTkFont(family="Segoe UI", size=10, italic=True),
+                text_color=THEME['text_muted'],
+                anchor="w"
+            )
+            lbl.pack(fill="x", padx=20, pady=2)
+            self.sub_frame.pack(fill="x", padx=0, pady=(2, 4))
 
 class CategorySettingsRow(tk.Frame):
-    """Compact card in Settings for mapping an executable name to a category. Uses tk.Frame for speed."""
-    def __init__(self, master, exe_name, current_category, on_change_callback):
+    """Compact card in Settings for mapping an executable name to a category and toggling details tracking. Uses tk.Frame for speed."""
+    def __init__(self, master, exe_name, current_category, track_details_enabled, on_change_callback, on_toggle_details_callback):
         super().__init__(master, bg=THEME['bg_card'])
         
         self.exe_name = exe_name
         self.on_change_callback = on_change_callback
+        self.on_toggle_details_callback = on_toggle_details_callback
         
         # Application name
         self.name_label = ctk.CTkLabel(
@@ -188,7 +332,7 @@ class CategorySettingsRow(tk.Frame):
             values=["Productivity", "Entertainment", "Distraction", "Untracked"],
             command=self._on_changed,
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            width=120,
+            width=110,
             fg_color=THEME['btn_bg'],
             button_color=THEME['btn_hover'],
             button_hover_color=THEME['text_muted'],
@@ -198,10 +342,33 @@ class CategorySettingsRow(tk.Frame):
             dropdown_hover_color=THEME['btn_hover']
         )
         self.cat_menu.set(current_category)
-        self.cat_menu.pack(side="right", padx=(0, 5), pady=8)
+        self.cat_menu.pack(side="right", padx=5, pady=8)
+
+        # Track Details Checkbox
+        self.details_check = ctk.CTkCheckBox(
+            self,
+            text="Track Details",
+            command=self._on_details_toggled,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            checkbox_width=18,
+            checkbox_height=18,
+            border_width=1,
+            fg_color=THEME['accent'],
+            hover_color=THEME['accent_hover'],
+            text_color=THEME['text_primary']
+        )
+        if track_details_enabled:
+            self.details_check.select()
+        else:
+            self.details_check.deselect()
+        self.details_check.pack(side="right", padx=10, pady=8)
 
     def _on_changed(self, choice):
         self.on_change_callback(self.exe_name, choice)
+
+    def _on_details_toggled(self):
+        enabled = self.details_check.get() == 1
+        self.on_toggle_details_callback(self.exe_name, enabled)
 
     def _on_remove_click(self):
         from tkinter import messagebox
@@ -623,6 +790,9 @@ class TrackerDashboard(ctk.CTk):
         self.fired_alerts = set()
         self.last_alert_date = datetime.date.today().isoformat()
         
+        # Expanded apps state for dropdown memory
+        self.expanded_apps = set()
+        
         # Window setup
         self.title("WofstudioZ Time Tracker")
         self.geometry("950x650")
@@ -741,7 +911,7 @@ class TrackerDashboard(ctk.CTk):
         # Footer
         self.footer_label = ctk.CTkLabel(
             self.sidebar_frame, 
-            text="WofstudioZ Time Tracker v1.0.1", 
+            text="WofstudioZ Time Tracker v1.0.2", 
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=THEME['text_muted']
         )
@@ -758,7 +928,7 @@ class TrackerDashboard(ctk.CTk):
         # View switcher
         self.view_selector = ctk.CTkSegmentedButton(
             self.main_frame,
-            values=["App Breakdown", "Analytics", "Browser Highlights", "History & Reports", "Settings"],
+            values=["App Breakdown", "Browser Highlights", "Add Apps", "History & Reports", "Settings"],
             command=self._switch_view,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             selected_color=THEME['accent'],
@@ -773,8 +943,8 @@ class TrackerDashboard(ctk.CTk):
         self.apps_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         self.apps_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         
-        # Scrollable container for Analytics
-        self.analytics_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
+        # Scrollable container for Add Apps
+        self.add_apps_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         
         # Scrollable container for Browser Highlights
         self.browser_scroll = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
@@ -792,7 +962,7 @@ class TrackerDashboard(ctk.CTk):
     def _switch_view(self, value):
         """Toggle frame visibility based on selected tab."""
         self.apps_scroll.grid_forget()
-        self.analytics_scroll.grid_forget()
+        self.add_apps_scroll.grid_forget()
         self.browser_scroll.grid_forget()
         self.history_scroll.grid_forget()
         self.settings_scroll.grid_forget()
@@ -800,12 +970,12 @@ class TrackerDashboard(ctk.CTk):
         if value == "App Breakdown":
             self.apps_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
             self.refresh_data()
-        elif value == "Analytics":
-            self.analytics_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
-            self.refresh_data()
         elif value == "Browser Highlights":
             self.browser_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
             self.refresh_data()
+        elif value == "Add Apps":
+            self.add_apps_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+            self.build_add_apps_tab()
         elif value == "History & Reports":
             self.history_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
             self.refresh_data()
@@ -814,7 +984,7 @@ class TrackerDashboard(ctk.CTk):
             self.build_settings_tab()
 
     def build_settings_tab(self):
-        """Construct settings menu and app category grids."""
+        """Construct settings menu showing configs, daily goals, and operations."""
         # Clear previous settings widgets
         for widget in self.settings_scroll.winfo_children():
             widget.destroy()
@@ -965,7 +1135,7 @@ class TrackerDashboard(ctk.CTk):
         
         update_desc = ctk.CTkLabel(
             update_info_frame,
-            text="Current version: v1.0.1. Check for new updates on GitHub.",
+            text="Current version: v1.0.2. Check for new updates on GitHub.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             text_color=THEME['text_secondary'],
             anchor="w"
@@ -984,163 +1154,9 @@ class TrackerDashboard(ctk.CTk):
         )
         check_update_btn.pack(side="right", padx=15, pady=15)
         
-        # Force Quit / Kill App Card
-        kill_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
-        kill_card.pack(fill="x", padx=10, pady=5)
-        
-        kill_info_frame = ctk.CTkFrame(kill_card, fg_color="transparent")
-        kill_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
-        
-        kill_label = ctk.CTkLabel(
-            kill_info_frame,
-            text="Force Quit Application",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            anchor="w"
-        )
-        kill_label.pack(fill="x")
-        
-        kill_desc = ctk.CTkLabel(
-            kill_info_frame,
-            text="Immediately terminate the tracker and all background threads.",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=THEME['text_secondary'],
-            anchor="w"
-        )
-        kill_desc.pack(fill="x")
-        
-        kill_btn = ctk.CTkButton(
-            kill_card,
-            text="Kill App",
-            command=self._force_quit_app,
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            width=120,
-            fg_color="#7f1d1d",
-            hover_color="#991b1b",
-            text_color="#fca5a5"
-        )
-        kill_btn.pack(side="right", padx=15, pady=15)
-        
-        # Feedback Card (Disabled/Commented out for now)
-        # feedback_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
-        # feedback_card.pack(fill="x", padx=10, pady=5)
-        # 
-        # feedback_inner = ctk.CTkFrame(feedback_card, fg_color="transparent")
-        # feedback_inner.pack(fill="x", padx=15, pady=12)
-        # 
-        # feedback_title = ctk.CTkLabel(
-        #     feedback_inner,
-        #     text="Send Feedback",
-        #     font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-        #     anchor="w"
-        # )
-        # feedback_title.pack(fill="x")
-        # 
-        # feedback_desc = ctk.CTkLabel(
-        #     feedback_inner,
-        #     text="Share your thoughts, bug reports or suggestions directly with us.",
-        #     font=ctk.CTkFont(family="Segoe UI", size=11),
-        #     text_color=THEME['text_secondary'],
-        #     anchor="w"
-        # )
-        # feedback_desc.pack(fill="x", pady=(0, 8))
-        # 
-        # # Name field
-        # self.feedback_name = ctk.CTkEntry(
-        #     feedback_inner,
-        #     placeholder_text="Your name (optional)",
-        #     font=ctk.CTkFont(family="Segoe UI", size=12),
-        #     fg_color=THEME['bg_main'],
-        #     text_color=THEME['text_primary'],
-        #     border_color=THEME['border_subtle'],
-        #     border_width=1,
-        #     corner_radius=6,
-        #     height=34
-        # )
-        # self.feedback_name.pack(fill="x", pady=(0, 6))
-        # 
-        # # Feedback textbox
-        # self.feedback_textbox = ctk.CTkTextbox(
-        #     feedback_inner,
-        #     height=80,
-        #     font=ctk.CTkFont(family="Segoe UI", size=12),
-        #     fg_color=THEME['bg_main'],
-        #     text_color=THEME['text_primary'],
-        #     border_color=THEME['border_subtle'],
-        #     border_width=1,
-        #     corner_radius=6,
-        #     wrap="word"
-        # )
-        # self.feedback_textbox.pack(fill="x", pady=(0, 10))
-        # self.feedback_textbox.insert("0.0", "Type your feedback here...")
-        # 
-        # def _clear_placeholder(event):
-        #     if self.feedback_textbox.get("0.0", "end").strip() == "Type your feedback here...":
-        #         self.feedback_textbox.delete("0.0", "end")
-        # self.feedback_textbox.bind("<FocusIn>", _clear_placeholder)
-        # 
-        # # Send row: button + status label
-        # send_row = ctk.CTkFrame(feedback_inner, fg_color="transparent")
-        # send_row.pack(fill="x")
-        # 
-        # send_btn = ctk.CTkButton(
-        #     send_row,
-        #     text="Send Feedback",
-        #     command=self._send_feedback,
-        #     font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-        #     fg_color=THEME['accent'],
-        #     hover_color=THEME['accent_hover'],
-        #     width=130,
-        #     height=32
-        # )
-        # send_btn.pack(side="left")
-        # 
-        # self.feedback_status_lbl = ctk.CTkLabel(
-        #     send_row,
-        #     text="",
-        #     font=ctk.CTkFont(family="Segoe UI", size=11),
-        #     anchor="w"
-        # )
-        # self.feedback_status_lbl.pack(side="left", padx=12)
-        
-        # Danger Zone / Clear Data Card
-        reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
-        reset_card.pack(fill="x", padx=10, pady=5)
-        
-        reset_info_frame = ctk.CTkFrame(reset_card, fg_color="transparent")
-        reset_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
-        
-        reset_label = ctk.CTkLabel(
-            reset_info_frame,
-            text="Danger Zone: Clear All Tracker Data",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#f87171",
-            anchor="w"
-        )
-        reset_label.pack(fill="x")
-        
-        reset_desc = ctk.CTkLabel(
-            reset_info_frame,
-            text="Permanently delete all logged screen times, category mappings, and goals.",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=THEME['text_secondary'],
-            anchor="w"
-        )
-        reset_desc.pack(fill="x")
-        
-        clear_btn = ctk.CTkButton(
-            reset_card,
-            text="Clear All Data",
-            command=self._clear_database_data,
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            width=120,
-            fg_color="#991b1b",
-            hover_color="#b91c1c"
-        )
-        clear_btn.pack(side="right", padx=15, pady=15)
-        
-        # Section: Daily Goals Card
+        # Section 2: Daily Goals Card
         goals_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
-        goals_card.pack(fill="x", padx=10, pady=5)
+        goals_card.pack(fill="x", padx=10, pady=10)
         
         goals_info_frame = ctk.CTkFrame(goals_card, fg_color="transparent")
         goals_info_frame.pack(fill="x", padx=15, pady=10)
@@ -1215,7 +1231,7 @@ class TrackerDashboard(ctk.CTk):
         self.d_h, self.d_m = create_goal_row(grid_goals, 2, "Distraction", CATEGORY_COLORS["Distraction"], "🔴 Distraction Limit:")
         
         # Save Goals Button & Status
-        btn_frame = tk.Frame(goals_info_frame, bg=THEME['bg_card'])
+        btn_frame = ctk.CTkFrame(goals_info_frame, fg_color="transparent")
         btn_frame.pack(fill="x", pady=(15, 5))
         
         save_goals_btn = ctk.CTkButton(
@@ -1237,9 +1253,107 @@ class TrackerDashboard(ctk.CTk):
             fg_color=THEME['bg_card']
         )
         self.goals_status_lbl.pack(side="left", padx=15)
+
+        # Section 3: Operations & Danger Zone Header
+        title_ops = ctk.CTkLabel(
+            self.settings_scroll,
+            text="⚠️ Operations & Danger Zone",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            anchor="w",
+            text_color="#ef4444"
+        )
+        title_ops.pack(fill="x", padx=10, pady=(25, 10))
+        
+        # Danger Zone / Clear Data Card
+        reset_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8, border_width=1, border_color="#7f1d1d")
+        reset_card.pack(fill="x", padx=10, pady=5)
+        
+        reset_info_frame = ctk.CTkFrame(reset_card, fg_color="transparent")
+        reset_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
+        
+        reset_label = ctk.CTkLabel(
+            reset_info_frame,
+            text="Clear All Tracker Data",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color="#f87171",
+            anchor="w"
+        )
+        reset_label.pack(fill="x")
+        
+        reset_desc = ctk.CTkLabel(
+            reset_info_frame,
+            text="Permanently delete all logged screen times, category mappings, and goals.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=THEME['text_secondary'],
+            anchor="w"
+        )
+        reset_desc.pack(fill="x")
+        
+        clear_btn = ctk.CTkButton(
+            reset_card,
+            text="Clear All Data",
+            command=self._clear_database_data,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=120,
+            fg_color="#991b1b",
+            hover_color="#b91c1c"
+        )
+        clear_btn.pack(side="right", padx=15, pady=15)
+        
+        # Force Quit / Kill App Card
+        kill_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
+        kill_card.pack(fill="x", padx=10, pady=5)
+        
+        kill_info_frame = ctk.CTkFrame(kill_card, fg_color="transparent")
+        kill_info_frame.pack(side="left", padx=15, pady=10, fill="x", expand=True)
+        
+        kill_label = ctk.CTkLabel(
+            kill_info_frame,
+            text="Force Quit Application",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            anchor="w"
+        )
+        kill_label.pack(fill="x")
+        
+        kill_desc = ctk.CTkLabel(
+            kill_info_frame,
+            text="Immediately terminate the tracker and all background threads.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=THEME['text_secondary'],
+            anchor="w"
+        )
+        kill_desc.pack(fill="x")
+        
+        kill_btn = ctk.CTkButton(
+            kill_card,
+            text="Kill App",
+            command=self._force_quit_app,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            width=120,
+            fg_color="#7f1d1d",
+            hover_color="#991b1b",
+            text_color="#fca5a5"
+        )
+        kill_btn.pack(side="right", padx=15, pady=15)
+
+    def build_add_apps_tab(self):
+        """Construct the Add & Categorize Applications layout."""
+        # Clear previous add apps widgets
+        for widget in self.add_apps_scroll.winfo_children():
+            widget.destroy()
+            
+        # Section Header
+        title_add_apps = ctk.CTkLabel(
+            self.add_apps_scroll,
+            text="➕ Add & Categorize Applications",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            anchor="w",
+            text_color=THEME['accent']
+        )
+        title_add_apps.pack(fill="x", padx=10, pady=(15, 10))
         
         # Section: Quick-Add Application Category Card
-        quick_add_card = ctk.CTkFrame(self.settings_scroll, fg_color=THEME['bg_card'], corner_radius=8)
+        quick_add_card = ctk.CTkFrame(self.add_apps_scroll, fg_color=THEME['bg_card'], corner_radius=8)
         quick_add_card.pack(fill="x", padx=10, pady=5)
         
         quick_add_info_frame = ctk.CTkFrame(quick_add_card, fg_color="transparent")
@@ -1298,7 +1412,7 @@ class TrackerDashboard(ctk.CTk):
             dropdown_text_color=THEME['text_primary'],
             dropdown_hover_color=THEME['btn_hover']
         )
-        self.add_cat_menu.set("Untracked") # Default to Untracked as that's the primary use-case
+        self.add_cat_menu.set("Untracked")
         self.add_cat_menu.pack(side="left", padx=(0, 10))
         
         add_btn = ctk.CTkButton(
@@ -1314,7 +1428,7 @@ class TrackerDashboard(ctk.CTk):
         
         # Section 2: App Categories Header
         title_categories = ctk.CTkLabel(
-            self.settings_scroll,
+            self.add_apps_scroll,
             text="🏷️ App Categories Settings",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
@@ -1323,16 +1437,17 @@ class TrackerDashboard(ctk.CTk):
         title_categories.pack(fill="x", padx=10, pady=(25, 5))
         
         desc_label = ctk.CTkLabel(
-            self.settings_scroll,
-            text="Group and configure categories. Mark applications as 'Untracked' to exclude them entirely.",
+            self.add_apps_scroll,
+            text="Group and configure categories. Mark applications as 'Untracked' to exclude them entirely. Check 'Track Details' to log project names.",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color=THEME['text_secondary'],
             anchor="w"
         )
         desc_label.pack(fill="x", padx=10, pady=(0, 15))
         
-        # Fetch and group unique apps by category (only show explicitly categorized ones)
+        # Fetch categories and track details maps
         categories = database.get_app_categories(self.db_path)
+        track_details_map = database.get_track_details_map(self.db_path)
         
         grouped_settings = {
             'Productivity': [],
@@ -1358,7 +1473,7 @@ class TrackerDashboard(ctk.CTk):
             
             # Category Section Label
             cat_header = ctk.CTkLabel(
-                self.settings_scroll,
+                self.add_apps_scroll,
                 text=f"{icon} {cat_name.upper()} APPS ({len(apps_list)})",
                 font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
                 text_color=color,
@@ -1366,8 +1481,8 @@ class TrackerDashboard(ctk.CTk):
             )
             cat_header.pack(fill="x", padx=10, pady=(15, 5))
             
-            # 2-Column Grid Container Frame (Uses tk.Frame for zero resize-redraw lag)
-            grid_frame = tk.Frame(self.settings_scroll, bg=THEME['bg_main'])
+            # 2-Column Grid Container Frame (Uses tk.Frame for zero lag)
+            grid_frame = tk.Frame(self.add_apps_scroll, bg=THEME['bg_main'])
             grid_frame.pack(fill="x", padx=5, pady=5)
             grid_frame.grid_columnconfigure(0, weight=1)
             grid_frame.grid_columnconfigure(1, weight=1)
@@ -1375,17 +1490,20 @@ class TrackerDashboard(ctk.CTk):
             for idx, app in enumerate(apps_list):
                 r = idx // 2
                 c = idx % 2
+                det_enabled = track_details_map.get(app.lower(), False)
                 card = CategorySettingsRow(
                     grid_frame, 
                     exe_name=app, 
                     current_category=cat_name, 
-                    on_change_callback=self._update_app_category
+                    track_details_enabled=det_enabled,
+                    on_change_callback=self._update_app_category,
+                    on_toggle_details_callback=self._toggle_app_track_details
                 )
                 card.grid(row=r, column=c, padx=6, pady=6, sticky="ew")
                 
         if not has_apps:
             no_apps_lbl = ctk.CTkLabel(
-                self.settings_scroll,
+                self.add_apps_scroll,
                 text="No tracked applications found to categorize yet. Start using apps to populate this list.",
                 font=ctk.CTkFont(family="Segoe UI", size=13),
                 text_color=THEME['text_muted']
@@ -1553,64 +1671,8 @@ class TrackerDashboard(ctk.CTk):
         print("[UI] Opening interactive monthly calendar pop-up modal...")
         MonthlyCalendarWindow(self, self.db_path)
 
-    def build_analytics_tab(self):
-        """Construct the Analytics layout showing category donut chart and weekly bar chart."""
-        for widget in self.analytics_scroll.winfo_children():
-            widget.destroy()
-            
-        title_analytics = ctk.CTkLabel(
-            self.analytics_scroll,
-            text="📊 Visual Analytics & Trends",
-            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-            anchor="w",
-            text_color=THEME['accent']
-        )
-        title_analytics.pack(fill="x", padx=10, pady=(15, 10))
-        
-        # Horizontal Split Panel using standard frame
-        split_frame = tk.Frame(self.analytics_scroll, bg=THEME['bg_main'])
-        split_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # Left Panel (Donut Chart)
-        left_card = ctk.CTkFrame(split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
-        left_card.pack(side="left", fill="both", expand=True, padx=10, pady=10)
-        
-        lbl_donut = ctk.CTkLabel(
-            left_card,
-            text="Today's Category Breakdown",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=THEME['text_primary']
-        )
-        lbl_donut.pack(pady=(12, 5))
-        
-        today = datetime.date.today().isoformat()
-        cat_durations = database.get_category_durations(self.db_path, today)
-        
-        # Instantiate DonutChart
-        donut = DonutChart(left_card, cat_durations, CATEGORY_COLORS, width=280, height=280)
-        donut.pack(padx=20, pady=10, fill="both", expand=True)
-        
-        # Right Panel (Weekly Bar Chart)
-        right_card = ctk.CTkFrame(split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
-        right_card.pack(side="right", fill="both", expand=True, padx=10, pady=10)
-        
-        lbl_bar = ctk.CTkLabel(
-            right_card,
-            text="Weekly Screen Time Trend",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=THEME['text_primary']
-        )
-        lbl_bar.pack(pady=(12, 5))
-        
-        # Fetch weekly history totals
-        weekly_totals = database.get_last_7_days_totals(self.db_path)
-        
-        # Instantiate BarChart
-        barchart = BarChart(right_card, weekly_totals, bar_color=THEME['accent'], width=380, height=280)
-        barchart.pack(padx=20, pady=10, fill="both", expand=True)
- 
     def build_history_tab(self):
-        """Construct the History and Reports layout including weekly averages and monthly top apps."""
+        """Construct the merged History, Reports & Analytics layout."""
         # Clear previous history widgets
         for widget in self.history_scroll.winfo_children():
             widget.destroy()
@@ -1618,7 +1680,7 @@ class TrackerDashboard(ctk.CTk):
         # Section Header
         title_history = ctk.CTkLabel(
             self.history_scroll,
-            text="📈 History & Reports",
+            text="📈 History, Reports & Analytics",
             font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             anchor="w",
             text_color=THEME['accent']
@@ -1689,6 +1751,44 @@ class TrackerDashboard(ctk.CTk):
         bind_card(card2, self.open_monthly_popup)
         bind_card(lbl2, self.open_monthly_popup)
         bind_card(val2, self.open_monthly_popup)
+        
+        # --- Analytics Charts Split Panel (Horizontal Split) ---
+        charts_split_frame = tk.Frame(self.history_scroll, bg=THEME['bg_main'])
+        charts_split_frame.pack(fill="x", padx=5, pady=10)
+        
+        # Left Panel (Donut Chart)
+        left_card = ctk.CTkFrame(charts_split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
+        left_card.pack(side="left", fill="both", expand=True, padx=10, pady=5)
+        
+        lbl_donut = ctk.CTkLabel(
+            left_card,
+            text="Today's Category Breakdown",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=THEME['text_primary']
+        )
+        lbl_donut.pack(pady=(12, 5))
+        
+        today = datetime.date.today().isoformat()
+        cat_durations = database.get_category_durations(self.db_path, today)
+        donut = DonutChart(left_card, cat_durations, CATEGORY_COLORS, width=280, height=220)
+        donut.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Right Panel (Weekly Bar Chart)
+        right_card = ctk.CTkFrame(charts_split_frame, fg_color=THEME['bg_card'], corner_radius=10, border_width=1, border_color=THEME['border_subtle'])
+        right_card.pack(side="right", fill="both", expand=True, padx=10, pady=5)
+        
+        lbl_bar = ctk.CTkLabel(
+            right_card,
+            text="Weekly Screen Time Trend",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=THEME['text_primary']
+        )
+        lbl_bar.pack(pady=(12, 5))
+        
+        # Fetch weekly history totals
+        weekly_totals = database.get_last_7_days_totals(self.db_path)
+        barchart = BarChart(right_card, weekly_totals, bar_color=THEME['accent'], width=380, height=220)
+        barchart.pack(padx=20, pady=10, fill="both", expand=True)
         
         # Monthly Top Apps Header
         top_title = ctk.CTkLabel(
@@ -1764,6 +1864,7 @@ class TrackerDashboard(ctk.CTk):
             app_breakdown = database.get_today_app_breakdown(self.db_path, today)
             app_categories = database.get_app_categories(self.db_path)
             cat_durations = database.get_category_durations(self.db_path, today)
+            track_details_map = database.get_track_details_map(self.db_path)
             
             grouped_apps = {
                 'Productivity': [],
@@ -1821,15 +1922,27 @@ class TrackerDashboard(ctk.CTk):
                 apps_in_cat = grouped_apps[cat_name]
                 if apps_in_cat:
                     for app in apps_in_cat:
+                        exe_lower = app['exe_name'].lower()
+                        is_expandable = track_details_map.get(exe_lower, False)
                         app_row = AppRow(
                             panel,
                             exe_name=app['exe_name'],
                             duration=app['duration'],
                             total_duration=today_total_sec,
                             max_duration=overall_max_sec,
-                            category=cat_name
+                            category=cat_name,
+                            db_path=self.db_path,
+                            date_str=today,
+                            dashboard=self,
+                            is_expandable=is_expandable
                         )
                         app_row.pack(fill="x", padx=10, pady=4)
+                        
+                        # Re-expand if it was previously expanded
+                        if exe_lower in self.expanded_apps:
+                            app_row.is_expanded = True
+                            app_row.name_label.configure(text=f"▼  {app['exe_name']}")
+                            app_row.load_sub_projects()
                 else:
                     empty_lbl = ctk.CTkLabel(
                         panel, 
@@ -1879,9 +1992,6 @@ class TrackerDashboard(ctk.CTk):
                 )
                 lbl.pack(pady=40)
                 self.rendered_browser_rows.append(lbl)
-
-        elif active_tab == "Analytics":
-            self.build_analytics_tab()
 
         elif active_tab == "History & Reports":
             self.build_history_tab()
@@ -2023,7 +2133,7 @@ class TrackerDashboard(ctk.CTk):
         import webbrowser
         import tkinter.messagebox as messagebox
         
-        current_version = "v1.0.1"
+        current_version = "v1.0.2"
         url = "https://api.github.com/repos/hp1user/tracker/releases/latest"
         req = urllib.request.Request(
             url, 
@@ -2031,7 +2141,7 @@ class TrackerDashboard(ctk.CTk):
         )
         
         def parse_version(v):
-            """Parse 'v1.0.1' into comparable tuple (1, 0, 1)."""
+            """Parse 'v1.0.2' into comparable tuple (1, 0, 2)."""
             try:
                 return tuple(int(x) for x in v.lstrip("v").split("."))
             except Exception:
@@ -2155,8 +2265,13 @@ class TrackerDashboard(ctk.CTk):
         if self.tracker:
             self.tracker.load_tracked_apps()
             
-        # Re-render Settings tab to show the new app in its list
-        self.build_settings_tab()
+        # Re-render Add Apps tab to show the new app in its list
+        self.build_add_apps_tab()
+
+    def _toggle_app_track_details(self, exe_name, enabled):
+        """Update the database with the tracking details preference for this app."""
+        database.set_app_track_details(self.db_path, exe_name, enabled)
+        print(f"[UI] Toggled detail tracking for {exe_name} to {enabled}")
 
     def _save_goals(self):
         """Save the hours and minutes settings for categories back to database."""
