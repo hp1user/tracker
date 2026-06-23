@@ -42,6 +42,9 @@ class WindowTracker:
         
         # Process name cache to minimize psutil lookups
         self.process_cache = {}
+        
+        # Last time the polling loop executed
+        self.last_poll_time = time.time()
 
     def load_tracked_apps(self):
         """Load the list of executables and categories manually assigned from the database."""
@@ -205,10 +208,50 @@ class WindowTracker:
     def _run_loop(self):
         """Main tracking loop running on background thread."""
         self.current_start_time = time.time()
+        self.last_poll_time = time.time()
         self.current_exe, self.current_title = self.get_active_window_info()
         
         while not self.stop_event.is_set():
-            time.sleep(self.poll_interval)
+            current_interval = self.poll_interval
+            time.sleep(current_interval)
+            
+            now = time.time()
+            elapsed_since_last_poll = now - self.last_poll_time
+            
+            # Check for system sleep/hibernation time jump
+            threshold = max(45.0, current_interval * 1.5 + 10.0)
+            if elapsed_since_last_poll > threshold:
+                print(f"[Tracker] Time jump detected ({elapsed_since_last_poll:.2f}s). System woke up from sleep/hibernation.")
+                
+                # Flush the time active before sleep
+                if self.current_exe and self.current_start_time:
+                    dur = int(self.last_poll_time - self.current_start_time)
+                    if dur > 0:
+                        today = datetime.date.today().isoformat()
+                        self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
+                        print(f"[Tracker] Flushed pre-sleep usage for {self.current_exe}: {dur}s")
+                
+                self.commit_buffer_to_db()
+                
+                # Reset tracking to start from now (the wake-up time)
+                self.current_start_time = now
+                self.current_exe, self.current_title = self.get_active_window_info()
+                self.last_poll_time = now
+                
+                # Check if system woke up directly in an idle state
+                idle_sec = self.get_idle_duration()
+                if idle_sec >= self.idle_threshold:
+                    self.is_idle = True
+                    self.current_exe = None
+                    self.current_title = None
+                    self.current_start_time = None
+                    print("[Tracker] System woke up in idle state. Tracking paused.")
+                else:
+                    self.is_idle = False
+                    print(f"[Tracker] System woke up active. Tracking resumed with {self.current_exe}.")
+                continue
+                
+            self.last_poll_time = now
             
             # Check idle state
             idle_sec = self.get_idle_duration()
