@@ -10,6 +10,36 @@ import psutil
 
 from database import save_usage, get_setting
 
+def split_time_interval_by_days(start_ts, end_ts):
+    """
+    Split a timestamp interval [start_ts, end_ts] into a list of (date_str, duration_seconds)
+    aligned with local calendar day boundaries (midnight 00:00:00).
+    """
+    if not start_ts or not end_ts or end_ts <= start_ts:
+        return []
+    
+    slices = []
+    current_start = start_ts
+    
+    while current_start < end_ts:
+        dt_start = datetime.datetime.fromtimestamp(current_start)
+        # Calculate timestamp for next midnight (start of next day)
+        next_midnight_dt = datetime.datetime.combine(
+            dt_start.date() + datetime.timedelta(days=1),
+            datetime.time.min
+        )
+        next_midnight_ts = next_midnight_dt.timestamp()
+        
+        current_end = min(end_ts, next_midnight_ts)
+        dur = int(round(current_end - current_start))
+        if dur > 0:
+            date_str = dt_start.date().isoformat()
+            slices.append((date_str, dur))
+            
+        current_start = current_end
+        
+    return slices
+
 class WindowTracker:
     def __init__(self, db_path, idle_threshold_seconds=300):
         self.db_path = db_path
@@ -70,9 +100,13 @@ class WindowTracker:
         lii = LASTINPUTINFO()
         lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
         if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
-            # GetTickCount returns milliseconds since system startup
-            millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
-            return millis / 1000.0
+            try:
+                # 32-bit tick subtraction modulo 2^32 handles wrap-around smoothly
+                tick32 = ctypes.windll.kernel32.GetTickCount()
+                diff_millis = ctypes.c_uint(tick32 - lii.dwTime).value
+                return diff_millis / 1000.0
+            except Exception:
+                return 0.0
         return 0.0
 
     def get_active_window_info(self):
@@ -113,7 +147,7 @@ class WindowTracker:
             
         exe_lower = exe_name.lower()
         if exe_lower not in self.tracked_apps_categories:
-            default_excluded = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe"}
+            default_excluded = {"explorer.exe", "timetracker.exe", "python.exe", "pythonw.exe", "lockapp.exe", "logonui.exe"}
             if exe_lower in default_excluded:
                 return None, None
                 
@@ -156,13 +190,25 @@ class WindowTracker:
         return None
 
     def flush_to_buffer(self, date_str, exe_name, window_title, duration):
-        """Add duration to the in-memory buffer."""
+        """Add duration to the in-memory buffer for a specific date."""
         if duration <= 0 or not exe_name:
             return
             
         key = (date_str, exe_name, window_title)
         with self.buffer_lock:
             self.buffer[key] = self.buffer.get(key, 0) + duration
+
+    def flush_time_interval(self, start_ts, end_ts, exe_name, window_title):
+        """Split and record elapsed time between start_ts and end_ts across calendar midnight boundaries."""
+        if not exe_name or not start_ts or not end_ts or end_ts <= start_ts:
+            return
+            
+        slices = split_time_interval_by_days(start_ts, end_ts)
+        with self.buffer_lock:
+            for date_str, dur in slices:
+                if dur > 0:
+                    key = (date_str, exe_name, window_title)
+                    self.buffer[key] = self.buffer.get(key, 0) + dur
 
     def commit_buffer_to_db(self):
         """Flush all aggregated buffer data to the SQLite database."""
@@ -196,11 +242,9 @@ class WindowTracker:
         if self.tracker_thread:
             self.tracker_thread.join(timeout=3)
             
-        # Final flush
+        # Final flush of active window interval
         if self.current_exe and self.current_start_time:
-            dur = int(time.time() - self.current_start_time)
-            today = datetime.date.today().isoformat()
-            self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
+            self.flush_time_interval(self.current_start_time, time.time(), self.current_exe, self.current_title)
             
         self.commit_buffer_to_db()
         print("[Tracker] Background engine stopped cleanly.")
@@ -223,22 +267,18 @@ class WindowTracker:
             if elapsed_since_last_poll > threshold:
                 print(f"[Tracker] Time jump detected ({elapsed_since_last_poll:.2f}s). System woke up from sleep/hibernation.")
                 
-                # Flush the time active before sleep
+                # Flush only active time before sleep (up to last_poll_time)
+                # Sleep period itself is not active screen time and is not tracked
                 if self.current_exe and self.current_start_time:
-                    dur = int(self.last_poll_time - self.current_start_time)
-                    if dur > 0:
-                        today = datetime.date.today().isoformat()
-                        self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
-                        print(f"[Tracker] Flushed pre-sleep usage for {self.current_exe}: {dur}s")
+                    pre_sleep_end = min(self.last_poll_time, now)
+                    if pre_sleep_end > self.current_start_time:
+                        self.flush_time_interval(self.current_start_time, pre_sleep_end, self.current_exe, self.current_title)
+                        print(f"[Tracker] Flushed pre-sleep usage for {self.current_exe} ({int(pre_sleep_end - self.current_start_time)}s)")
                 
                 self.commit_buffer_to_db()
                 
                 # Reset tracking to start from now (the wake-up time)
-                self.current_start_time = now
-                self.current_exe, self.current_title = self.get_active_window_info()
                 self.last_poll_time = now
-                
-                # Check if system woke up directly in an idle state
                 idle_sec = self.get_idle_duration()
                 if idle_sec >= self.idle_threshold:
                     self.is_idle = True
@@ -248,6 +288,8 @@ class WindowTracker:
                     print("[Tracker] System woke up in idle state. Tracking paused.")
                 else:
                     self.is_idle = False
+                    self.current_start_time = now
+                    self.current_exe, self.current_title = self.get_active_window_info()
                     print(f"[Tracker] System woke up active. Tracking resumed with {self.current_exe}.")
                 continue
                 
@@ -257,11 +299,11 @@ class WindowTracker:
             idle_sec = self.get_idle_duration()
             if idle_sec >= self.idle_threshold:
                 if not self.is_idle:
-                    # Just transitioned to idle: flush current activity
+                    # Transitioned to idle: flush only the period user was active before becoming idle
                     if self.current_exe and self.current_start_time:
-                        dur = int(time.time() - self.current_start_time)
-                        today = datetime.date.today().isoformat()
-                        self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
+                        last_active_time = max(self.current_start_time, now - idle_sec)
+                        if last_active_time > self.current_start_time:
+                            self.flush_time_interval(self.current_start_time, last_active_time, self.current_exe, self.current_title)
                     self.commit_buffer_to_db()
                     self.is_idle = True
                     self.current_exe = None
@@ -283,28 +325,22 @@ class WindowTracker:
             
             # If active window/title changed
             if exe != self.current_exe or title != self.current_title:
-                # Log duration of the previous app
+                # Log duration of the previous app across day boundaries
                 if self.current_exe and self.current_start_time:
-                    dur = int(time.time() - self.current_start_time)
-                    today = datetime.date.today().isoformat()
-                    self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
-                    
-                    # Force commit immediately upon app/window switch for fast UI updates
+                    self.flush_time_interval(self.current_start_time, now, self.current_exe, self.current_title)
                     self.commit_buffer_to_db()
                 
                 # Switch to new app
                 self.current_exe = exe
                 self.current_title = title
-                self.current_start_time = time.time()
+                self.current_start_time = now if exe else None
             else:
                 # Periodic database commits if same app remains open
                 now = time.time()
-                commit_interval = max(30.0, self.poll_interval)
+                commit_interval = max(30.0, float(self.poll_interval))
                 if now - self.last_db_commit >= commit_interval:
                     if self.current_exe and self.current_start_time:
-                        dur = int(now - self.current_start_time)
-                        today = datetime.date.today().isoformat()
-                        self.flush_to_buffer(today, self.current_exe, self.current_title, dur)
+                        self.flush_time_interval(self.current_start_time, now, self.current_exe, self.current_title)
                         self.current_start_time = now
                         
                     self.commit_buffer_to_db()

@@ -56,6 +56,9 @@ def init_db(db_path):
                 
             # Migrate any existing "Unsaved" window titles to ""
             migrate_unsaved_records(conn)
+            
+            # Clean up any past corrupted / multi-day jump records exceeding 24h
+            cleanup_anomalous_durations(conn)
     finally:
         conn.close()
 
@@ -70,12 +73,19 @@ def save_usage(db_path, records):
     # Clean records: if the project name extracts to "Unsaved", save with empty window_title
     cleaned_records = []
     for date, exe, title, dur in records:
+        if dur <= 0 or not exe:
+            continue
+        # Hard cap for a single batch record: cannot exceed 24 hours (86,400s)
+        safe_dur = min(dur, 86400)
         project = extract_project_name(exe, title)
         if project == "Unsaved":
-            cleaned_records.append((date, exe, "", dur))
+            cleaned_records.append((date, exe, "", safe_dur))
         else:
-            cleaned_records.append((date, exe, title, dur))
+            cleaned_records.append((date, exe, title, safe_dur))
             
+    if not cleaned_records:
+        return
+
     conn = get_db_connection(db_path)
     try:
         with conn:
@@ -83,7 +93,7 @@ def save_usage(db_path, records):
                 INSERT INTO app_usage (date, exe_name, window_title, duration_seconds)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(date, exe_name, window_title)
-                DO UPDATE SET duration_seconds = duration_seconds + excluded.duration_seconds
+                DO UPDATE SET duration_seconds = MIN(86400, duration_seconds + excluded.duration_seconds)
             """, cleaned_records)
     finally:
         conn.close()
@@ -564,6 +574,42 @@ def migrate_unsaved_records(conn):
         VALUES (?, ?, ?, ?)
     """, [(item['date'], item['exe_name'], item['window_title'], item['duration']) for item in aggregated.values()])
     print(f"[Database] Migration complete. Consolidated into {len(aggregated)} rows.")
+
+def cleanup_anomalous_durations(conn):
+    """
+    Clean up any corrupt / multi-day jump records where a single row or day exceeded 24 hours (86,400s).
+    Replaces sleep/unattended time jumps with a baseline sample (30s) so screen time resets properly.
+    """
+    try:
+        # 1. Check for individual rows exceeding 24 hours
+        rows = conn.execute("SELECT id, date, exe_name, duration_seconds FROM app_usage WHERE duration_seconds > 86400").fetchall()
+        if rows:
+            print(f"[Database] Found {len(rows)} anomalous records exceeding 24 hours. Repairing...")
+            for r in rows:
+                conn.execute("UPDATE app_usage SET duration_seconds = 30 WHERE id = ?", (r['id'],))
+            print("[Database] Anomalous records successfully repaired.")
+            
+        # 2. Check for dates where the daily sum exceeds 24 hours (86,400s)
+        date_sums = conn.execute("""
+            SELECT date, SUM(duration_seconds) as total 
+            FROM app_usage 
+            GROUP BY date 
+            HAVING total > 86400
+        """).fetchall()
+        
+        if date_sums:
+            for d in date_sums:
+                date_val = d['date']
+                total_val = d['total']
+                ratio = 86400.0 / total_val
+                print(f"[Database] Day {date_val} sum {total_val}s exceeds 24h. Scaling rows to fit within 24h...")
+                conn.execute("""
+                    UPDATE app_usage 
+                    SET duration_seconds = MAX(1, CAST(duration_seconds * ? AS INTEGER))
+                    WHERE date = ?
+                """, (ratio, date_val))
+    except Exception as e:
+        print(f"[Database] Error running cleanup_anomalous_durations: {e}")
 
 def get_project_breakdown_for_app(db_path, date_str, exe_name):
     """Retrieve durations grouped by parsed project/file names for a specific app on a given date."""
